@@ -23,29 +23,14 @@ local function CleanText(rawText)
     return string.match(clean, "^%s*(.-)%s*$") or ""
 end
 
--- Multi-fallback thumbnail extractor for Discord compatibility
+-- Direct CDN Resolver for Decals, Images, and Textures
 local function FetchImageUrl(rawImageId)
     if not rawImageId or rawImageId == "" then return nil end
-    local assetId = string.match(to_string and to_string(rawImageId) or tostring(rawImageId), "%d+")
+    local assetId = string.match(tostring(rawImageId), "%d+")
     if not assetId then return nil end
 
-    -- Strategy 1: Try Roblox Official Thumbnails Batch API
-    local apiUrl = "https://thumbnails.roblox.com/v1/assets?assetIds=" .. assetId .. "&size=420x420&format=Png&isCircular=false"
-    local success, response = pcall(function()
-        return httpRequest({ Url = apiUrl, Method = "GET" })
-    end)
-
-    if success and response and response.StatusCode == 200 then
-        local decodeSuccess, data = pcall(function()
-            return HttpService:JSONDecode(response.Body)
-        end)
-        if decodeSuccess and data and data.data and data.data[1] and data.data[1].imageUrl then
-            return data.data[1].imageUrl
-        end
-    end
-
-    -- Strategy 2: Directly resolve using Roblox Asset Endpoint
-    return "https://assetgame.roblox.com/Game/Tools/ThumbnailAsset.ashx?aid=" .. assetId .. "&fmt=png&wd=420&ht=420"
+    -- Uses Roblox's CDN endpoint which automatically resolves Decal IDs to Texture PNGs
+    return "https://rbxcdn.com/" .. assetId
 end
 
 -- Evaluates rarity and assigns embed color
@@ -94,7 +79,7 @@ local function ScanShopAndNotify()
                     local statText = statLabel and CleanText(statLabel.Text) or "None"
                     local itemName = nameLabel and CleanText(nameLabel.Text) or itemFrame.Name
 
-                    -- Icon Extraction Across Multiple Common UI Layouts
+                    -- Extract Icon/Image ID
                     local rawImageId = ""
                     local iconPlate = itemFrame:FindFirstChild("IconPlate", true) or itemFrame:FindFirstChild("Icon", true)
                     
@@ -125,8 +110,7 @@ local function ScanShopAndNotify()
                         ["timestamp"] = DateTime.now():ToIsoDate()
                     }
 
-                    -- Only insert thumbnail if a valid URL was returned
-                    if imageUrl and imageUrl ~= "" then
+                    if imageUrl then
                         embedData["thumbnail"] = { ["url"] = imageUrl }
                     end
 
@@ -155,7 +139,7 @@ local function ScanShopAndNotify()
         end
     end
 
-    -- Clear cache for items that disappear so future rotations notify again
+    -- Clear cache for items that disappear so future shop cycles notify again
     for cachedName, _ in pairs(notifiedItems) do
         if not currentlyVisible[cachedName] then
             notifiedItems[cachedName] = nil
