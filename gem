@@ -27,17 +27,17 @@ local function FormatAssetUrl(rbxAssetId)
     return nil
 end
 
--- Checks rarity type and returns matching embed color + whether it should trigger an alert
+-- Checks rarity type and returns matching embed color, raw rarity string, and alert status
 local function GetRarityDetails(typeText)
     local upperText = string.upper(typeText)
     
     if string.find(upperText, "SECRET") then
-        return COLOR_CYAN, true
+        return COLOR_CYAN, "SECRET", true
     elseif string.find(upperText, "MYTHIC") then
-        return COLOR_PINK_RED, true
+        return COLOR_PINK_RED, "MYTHIC", true
     end
     
-    return nil, false -- Ignore Common, Rare, Epic, Legendary, etc.
+    return nil, "", false -- Ignore Common, Rare, Epic, Legendary, etc.
 end
 
 -- Main function to scan the shop
@@ -47,8 +47,11 @@ local function ScanShopAndNotify()
     for _, itemFrame in ipairs(SHOP_SCROLLER:GetChildren()) do
         -- Filter items starting with "Shop_" and check if visible
         if string.sub(itemFrame.Name, 1, 5) == "Shop_" and itemFrame.Visible then
-            local typeText = itemFrame:FindFirstChild("TypeText") and itemFrame.TypeText.Text or "Unknown"
-            local color, isTargetRarity = GetRarityDetails(typeText)
+            local typeText = itemFrame:FindFirstChild("ItemText") and itemFrame.ItemText.Text 
+                or itemFrame:FindFirstChild("TypeText") and itemFrame.TypeText.Text 
+                or "Unknown"
+
+            local color, rarityName, isTargetRarity = GetRarityDetails(typeText)
 
             -- Only process if item is Secret or Mythic
             if isTargetRarity then
@@ -64,7 +67,8 @@ local function ScanShopAndNotify()
 
                 table.insert(shopItems, {
                     Name = itemName,
-                    Type = typeText,
+                    Rarity = rarityName,
+                    FullType = string.upper(typeText),
                     Price = priceText,
                     Stats = statText,
                     ImageUrl = imageUrl,
@@ -80,9 +84,10 @@ local function ScanShopAndNotify()
             ["title"] = "🔥 " .. item.Name,
             ["color"] = item.Color,
             ["fields"] = {
-                { ["name"] = "✨ Rarity / Type", ["value"] = item.Type, ["inline"] = true },
+                { ["name"] = "✨ Rarity", ["value"] = item.Rarity, ["inline"] = true },
                 { ["name"] = "💰 Price", ["value"] = item.Price, ["inline"] = true },
-                { ["name"] = "⚔️ Stats", ["value"] = item.Stats, ["inline"] = false }
+                { ["name"] = "⚔️ Stats", ["value"] = item.Stats, ["inline"] = false },
+                { ["name"] = "📦 Type", ["value"] = item.FullType, ["inline"] = false }
             },
             ["footer"] = { ["text"] = "Mafia Wars High-Rarity Tracker" },
             ["timestamp"] = DateTime.now():ToIsoDate()
