@@ -1,0 +1,207 @@
+local Players = game:GetService("Players")
+local HttpService = game:GetService("HttpService")
+
+local WEBHOOK_URL = "https://discord.com/api/webhooks/1549486969220890737/2RYHoKo77nt1lsbGnaddqJtqWgfbllssylfSsUzxNKdNyCyyvtsKIBHT4zUA5Mkx_d-s"
+local httpRequest = request or http_request or (syn and syn.request) or (http and http.request)
+
+local function webhookLog(msg)
+    if not httpRequest then return end
+    pcall(function()
+        httpRequest({
+            Url = WEBHOOK_URL,
+            Method = "POST",
+            Headers = { ["Content-Type"] = "application/json" },
+            Body = HttpService:JSONEncode({ content = "🛠️ " .. tostring(msg) }),
+        })
+    end)
+end
+
+-- Send this BEFORE touching any GUI code, so we know if we even get this far
+webhookLog("Script started. httpRequest found: " .. tostring(httpRequest ~= nil))
+
+if not httpRequest then
+    return
+end
+
+-- ===== On-screen fallback, fully wrapped so it can never kill the script =====
+local screenLog = function(msg) end -- no-op default in case GUI setup fails
+
+local guiOk, guiErr = pcall(function()
+    local player = Players.LocalPlayer
+    local debugGui = Instance.new("ScreenGui")
+    debugGui.Name = "ShopNotifierDebug"
+    debugGui.ResetOnSpawn = false
+    debugGui.Parent = player:WaitForChild("PlayerGui")
+
+    local scrollFrame = Instance.new("ScrollingFrame")
+    scrollFrame.Size = UDim2.new(0.4, 0, 0.5, 0)
+    scrollFrame.Position = UDim2.new(0, 10, 0, 10)
+    scrollFrame.BackgroundColor3 = Color3.new(0, 0, 0)
+    scrollFrame.BackgroundTransparency = 0.3
+    scrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+    scrollFrame.Parent = debugGui
+
+    local listLayout = Instance.new("UIListLayout")
+    listLayout.Parent = scrollFrame
+
+    screenLog = function(msg)
+        local label = Instance.new("TextLabel")
+        label.Size = UDim2.new(1, 0, 0, 20)
+        label.BackgroundTransparency = 1
+        label.TextColor3 = Color3.new(1, 1, 1)
+        label.TextXAlignment = Enum.TextXAlignment.Left
+        label.TextWrapped = true
+        label.Font = Enum.Font.Code
+        label.TextSize = 14
+        label.Text = os.date("%H:%M:%S") .. " - " .. tostring(msg)
+        label.Parent = scrollFrame
+        scrollFrame.CanvasSize = UDim2.new(0, 0, 0, listLayout.AbsoluteContentSize.Y)
+    end
+end)
+
+webhookLog("GUI setup " .. (guiOk and "succeeded" or ("FAILED: " .. tostring(guiErr))))
+
+local function debugLog(msg)
+    webhookLog(msg)
+    screenLog(msg)
+end
+
+-- ===== Rest of setup =====
+local player = Players.LocalPlayer
+local mafiaOk, mafiaUI = pcall(function()
+    return player.PlayerGui:WaitForChild("MafiaWarsUI", 10)
+end)
+if not mafiaOk or not mafiaUI then
+    debugLog("FAILED to find MafiaWarsUI: " .. tostring(mafiaUI))
+    return
+end
+debugLog("Found MafiaWarsUI")
+
+local shopOk, shopPanel = pcall(function()
+    return mafiaUI.Root.Content.ShopPanel
+end)
+if not shopOk or not shopPanel then
+    debugLog("FAILED to find ShopPanel: " .. tostring(shopPanel))
+    return
+end
+
+local scrollOk, cashScroller = pcall(function()
+    return shopPanel:WaitForChild("CashScroller", 10)
+end)
+if not scrollOk or not cashScroller then
+    debugLog("FAILED to find CashScroller: " .. tostring(cashScroller))
+    return
+end
+
+debugLog("Found CashScroller with " .. #cashScroller:GetChildren() .. " children")
+
+local ALLOWED_RARITIES = { SECRET = true, MYTHIC = true, LEGENDARY = true }
+local RARITY_KEYWORDS = { "SECRET", "MYTHIC", "LEGENDARY", "EPIC", "RARE", "UNCOMMON", "COMMON" }
+local RARITY_COLORS = {
+    SECRET = 0xFF0000, MYTHIC = 0xFF00FF, LEGENDARY = 0xFFA500,
+    EPIC = 0x9400D3, RARE = 0x1E90FF, UNCOMMON = 0x00FF7F, COMMON = 0xAAAAAA,
+}
+
+local function getRarity(typeText)
+    local upper = string.upper(typeText)
+    for _, keyword in ipairs(RARITY_KEYWORDS) do
+        if string.find(upper, keyword) then return keyword end
+    end
+    return "UNKNOWN"
+end
+
+local function sendWebhook(item)
+    local embed = {
+        title = item.Name,
+        color = RARITY_COLORS[item.Rarity] or 0xFFFFFF,
+        thumbnail = { url = item.Icon },
+        fields = {
+            { name = "Rarity", value = item.Rarity, inline = true },
+            { name = "Price",  value = item.Price,  inline = true },
+            { name = "Stat",   value = item.Stat,   inline = true },
+        },
+        timestamp = DateTime.now():ToIsoDate(),
+    }
+    local ok, response = pcall(function()
+        return httpRequest({
+            Url = WEBHOOK_URL,
+            Method = "POST",
+            Headers = { ["Content-Type"] = "application/json" },
+            Body = HttpService:JSONEncode({ embeds = { embed } }),
+        })
+    end)
+    if ok then
+        debugLog("Webhook sent OK for " .. item.Name)
+    else
+        debugLog("Webhook FAILED for " .. item.Name .. ": " .. tostring(response))
+    end
+end
+
+local function readItem(itemFrame)
+    local itemNameLabel = itemFrame:FindFirstChild("ItemName")
+    local priceLabel     = itemFrame:FindFirstChild("PriceText")
+    local statLabel      = itemFrame:FindFirstChild("StatText")
+    local typeLabel       = itemFrame:FindFirstChild("TypeText")
+    local iconPlate       = itemFrame:FindFirstChild("IconPlate")
+    local icon            = iconPlate and iconPlate:FindFirstChild("ItemIcon")
+
+    if not (itemNameLabel and priceLabel and statLabel and typeLabel) then
+        return nil, "missing labels"
+    end
+
+    return {
+        Name = itemNameLabel.Text,
+        Price = priceLabel.Text,
+        Stat = statLabel.Text,
+        Rarity = getRarity(typeLabel.Text),
+        Icon = icon and icon.Image or "",
+    }
+end
+
+local notified = {}
+
+local function checkItem(itemFrame)
+    if not itemFrame:IsA("GuiObject") then return end
+    if not string.match(itemFrame.Name, "^Shop_") then return end
+
+    if itemFrame.Visible then
+        if notified[itemFrame.Name] then return end
+
+        local data, err = readItem(itemFrame)
+        if not data then
+            debugLog("Skipped " .. itemFrame.Name .. " - " .. tostring(err))
+            return
+        end
+
+        if ALLOWED_RARITIES[data.Rarity] then
+            sendWebhook(data)
+        end
+
+        notified[itemFrame.Name] = true
+    else
+        notified[itemFrame.Name] = nil
+    end
+end
+
+local shopItems = cashScroller:GetChildren()
+local matched, errored, skippedNonShop = 0, 0, 0
+
+for _, itemFrame in ipairs(shopItems) do
+    local ok, err = pcall(function()
+        if itemFrame:IsA("GuiObject") and string.match(itemFrame.Name, "^Shop_") then
+            matched = matched + 1
+            checkItem(itemFrame)
+            itemFrame:GetPropertyChangedSignal("Visible"):Connect(function()
+                checkItem(itemFrame)
+            end)
+        else
+            skippedNonShop = skippedNonShop + 1
+        end
+    end)
+    if not ok then
+        errored = errored + 1
+        debugLog("ERROR on '" .. tostring(itemFrame.Name) .. "': " .. tostring(err))
+    end
+end
+
+debugLog("Setup complete. Matched: " .. matched .. " | Skipped: " .. skippedNonShop .. " | Errored: " .. errored .. " | Total: " .. #shopItems)
