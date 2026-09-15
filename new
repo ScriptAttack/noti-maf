@@ -27,14 +27,26 @@ end
 local function getAssetImageUrl(assetImage)
     local assetId = string.match(assetImage, "%d+")
     if not assetId then return nil end
-    return "https://www.roblox.com/asset-thumbnail/image?assetId=" .. assetId .. "&width=420&height=420&format=png"
+
+    local ok, result = pcall(function()
+        local response = httpRequest({
+            Url = "https://thumbnails.roblox.com/v1/assets?assetIds=" .. assetId .. "&size=420x420&format=Png&isCircular=false",
+            Method = "GET",
+        })
+        local data = HttpService:JSONDecode(response.Body)
+        return data and data.data and data.data[1] and data.data[1].imageUrl
+    end)
+
+    if ok and result then
+        return result
+    end
+    return nil
 end
 
 local function sendWebhook(item)
     local embed = {
         title = item.Name,
         color = RARITY_COLORS[item.Rarity] or 0xFFFFFF,
-        thumbnail = { url = item.Icon },
         fields = {
             { name = "Rarity", value = item.Rarity, inline = true },
             { name = "Price",  value = item.Price,  inline = true },
@@ -42,6 +54,11 @@ local function sendWebhook(item)
         },
         timestamp = DateTime.now():ToIsoDate(),
     }
+
+    if item.Icon and item.Icon ~= "" then
+        embed.thumbnail = { url = item.Icon }
+    end
+
     pcall(function()
         httpRequest({
             Url = WEBHOOK_URL,
@@ -69,7 +86,7 @@ local function readItem(itemFrame)
         Price = priceLabel.Text,
         Stat = statLabel.Text,
         Rarity = getRarity(typeLabel.Text),
-        Icon = icon and getAssetImageUrl(icon.Image) or "",
+        Icon = icon and getAssetImageUrl(icon.Image) or nil,
     }
 end
 
