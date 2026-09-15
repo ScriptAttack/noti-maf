@@ -1,0 +1,160 @@
+local HttpService = game:GetService("HttpService")
+local Players = game:GetService("Players")
+
+-- ================= CONFIGURATION =================
+local WEBHOOK_URL = "https://discord.com/api/webhooks/1549486969220890737/2RYHoKo77nt1lsbGnaddqJtqWgfbllssylfSsUzxNKdNyCyyvtsKIBHT4zUA5Mkx_d-s"
+local DISCORD_ROLE_OR_USER_PING = "" -- Add ping like "<@&ROLE_ID>" or "@everyone"
+local SCAN_INTERVAL = 5 -- How often to check the shop (in seconds)
+
+local COLOR_CYAN = 65535         -- Cyan (#00FFFF) for Secret
+local COLOR_PINK_RED = 13323087   -- Dark Pinkish-Red (#CB2C4F) for Mythic
+-- =================================================
+
+local LOCAL_PLAYER = Players.LocalPlayer
+local httpRequest = request or http_request or (syn and syn.request) or (http and http.request)
+local notifiedItems = {} -- Stores items already sent during the current shop cycle
+
+-- Strips XML/HTML tags and trims whitespace
+local function CleanText(rawText)
+    if not rawText then return "" end
+    local clean = string.gsub(rawText, "<[^>]- >", "")
+    clean = string.gsub(clean, "<[^>]+>", "")
+    clean = string.gsub(clean, "%s+", " ")
+    return string.match(clean, "^%s*(.-)%s*$") or ""
+end
+
+-- Fetches asset thumbnails via Roblox API call
+local function FetchImageUrl(rawImageId)
+    if not rawImageId or rawImageId == "" then return nil end
+    local assetId = string.match(rawImageId, "%d+")
+    if not assetId then return nil end
+
+    local apiUrl = "https://thumbnails.roblox.com/v1/assets?assetIds=" .. assetId .. "&size=420x420&format=Png&isCircular=false"
+    local success, response = pcall(function()
+        return httpRequest({ Url = apiUrl, Method = "GET" })
+    end)
+
+    if success and response and response.StatusCode == 200 then
+        local decodeSuccess, data = pcall(function()
+            return HttpService:JSONDecode(response.Body)
+        end)
+        if decodeSuccess and data and data.data and data.data[1] and data.data[1].imageUrl then
+            return data.data[1].imageUrl
+        end
+    end
+
+    return "https://assetgame.roblox.com/Game/Tools/ThumbnailAsset.ashx?aid=" .. assetId .. "&fmt=png&wd=420&ht=420"
+end
+
+-- Checks rarity type and returns matching embed color, raw rarity string, and alert status
+local function GetRarityDetails(typeText)
+    local upperText = string.upper(typeText)
+    if string.find(upperText, "SECRET") then
+        return COLOR_CYAN, "SECRET", true
+    elseif string.find(upperText, "MYTHIC") then
+        return COLOR_PINK_RED, "MYTHIC", true
+    end
+    return nil, "", false
+end
+
+-- Main function to scan the shop
+local function ScanShopAndNotify()
+    local mafiaUI = LOCAL_PLAYER.PlayerGui:FindFirstChild("MafiaWarsUI")
+    if not mafiaUI then return end
+
+    local shopPanel = mafiaUI:FindFirstChild("Root") 
+        and mafiaUI.Root:FindFirstChild("Content") 
+        and mafiaUI.Root.Content:FindFirstChild("ShopPanel")
+    if not shopPanel then return end
+
+    local cashScroller = shopPanel:FindFirstChild("CashScroller")
+    if not cashScroller then return end
+
+    local currentlyVisible = {}
+
+    for _, itemFrame in ipairs(cashScroller:GetChildren()) do
+        -- Checks for valid shop items that are currently visible
+        if itemFrame:IsA("GuiObject") and string.match(itemFrame.Name, "^Shop_") and itemFrame.Visible then
+            currentlyVisible[itemFrame.Name] = true
+
+            local typeLabel = itemFrame:FindFirstChild("ItemText", true) or itemFrame:FindFirstChild("TypeText", true)
+            local rawTypeText = typeLabel and typeLabel.Text or ""
+            local cleanedType = CleanText(rawTypeText)
+
+            local color, rarityName, isTargetRarity = GetRarityDetails(cleanedType)
+
+            if isTargetRarity then
+                -- Only send if we haven't already alerted for this specific frame in this rotation
+                if not notifiedItems[itemFrame.Name] then
+                    local priceLabel = itemFrame:FindFirstChild("PriceText", true)
+                    local statLabel = itemFrame:FindFirstChild("StatText", true)
+                    local nameLabel = itemFrame:FindFirstChild("ItemName", true)
+
+                    local priceText = priceLabel and CleanText(priceLabel.Text) or "N/A"
+                    local statText = statLabel and CleanText(statLabel.Text) or "None"
+                    local itemName = nameLabel and CleanText(nameLabel.Text) or itemFrame.Name
+
+                    -- Icon extraction
+                    local iconPlate = itemFrame:FindFirstChild("IconPlate", true)
+                    local itemIcon = iconPlate and iconPlate:FindFirstChild("ItemIcon", true)
+                    local rawImageId = itemIcon and itemIcon.Image or ""
+                    local imageUrl = FetchImageUrl(rawImageId)
+
+                    local embedData = {
+                        ["title"] = "🔥 " .. itemName,
+                        ["color"] = color,
+                        ["fields"] = {
+                            { ["name"] = "✨ Rarity", ["value"] = rarityName, ["inline"] = true },
+                            { ["name"] = "💰 Price", ["value"] = priceText, ["inline"] = true },
+                            { ["name"] = "⚔️ Stats", ["value"] = statText, ["inline"] = false },
+                            { ["name"] = "📦 Type", ["value"] = string.upper(cleanedType), ["inline"] = false }
+                        },
+                        ["footer"] = { ["text"] = "Mafia Wars High-Rarity Tracker" },
+                        ["timestamp"] = DateTime.now():ToIsoDate()
+                    }
+
+                    if imageUrl then
+                        embedData["thumbnail"] = { ["url"] = imageUrl }
+                    end
+
+                    local payloadData = {
+                        ["username"] = "Shop Tracker",
+                        ["embeds"] = { embedData }
+                    }
+
+                    if DISCORD_ROLE_OR_USER_PING ~= "" then
+                        payloadData["content"] = DISCORD_ROLE_OR_USER_PING
+                    end
+
+                    pcall(function()
+                        httpRequest({
+                            Url = WEBHOOK_URL,
+                            Method = "POST",
+                            Headers = { ["Content-Type"] = "application/json" },
+                            Body = HttpService:JSONEncode(payloadData)
+                        })
+                    end)
+
+                    notifiedItems[itemFrame.Name] = true
+                    task.wait(0.5) -- Avoid Discord rate limits
+                end
+            end
+        end
+    end
+
+    -- Automatically clear items from memory when they disappear from the shop
+    for cachedName, _ in pairs(notifiedItems) do
+        if not currentlyVisible[cachedName] then
+            notifiedItems[cachedName] = nil
+        end
+    end
+end
+
+-- Start continuous background thread
+task.spawn(function()
+    print("[Shop Monitor] Auto-tracker initialized! Monitoring every " .. SCAN_INTERVAL .. " seconds...")
+    while true do
+        pcall(ScanShopAndNotify)
+        task.wait(SCAN_INTERVAL)
+    end
+end)
