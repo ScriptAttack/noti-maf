@@ -1,0 +1,150 @@
+local HttpService = game:GetService("HttpService")
+local Players = game:GetService("Players")
+
+-- ================= CONFIGURATION =================
+local BOT_API_URL = "http://localhost:3000/api/alert"
+local SECRET_KEY = "mafioso#6767tt" -- Must match SECRET_KEY in bot.js
+local SCAN_INTERVAL = 2
+
+local COLOR_CYAN = 65535         -- Cyan (#00FFFF) for Secret
+local COLOR_PINK_RED = 13323087   -- Dark Pinkish-Red (#CB2C4F) for Mythic
+
+local FALLBACK_IMAGE_URL = "https://tr.rbxcdn.com/1802100de51d0870ed362a75878d6b9d/150/150/Image/Png"
+-- =================================================
+
+local LOCAL_PLAYER = Players.LocalPlayer
+local httpRequest = request or http_request or (syn and syn.request) or (http and http.request)
+local notifiedItems = {}
+
+local function CleanText(rawText)
+    if not rawText then return "" end
+    local clean = string.gsub(rawText, "<[^>]- >", "")
+    clean = string.gsub(clean, "<[^>]+>", "")
+    clean = string.gsub(clean, "%s+", " ")
+    return string.match(clean, "^%s*(.-)%s*$") or ""
+end
+
+local function FetchImageUrl(rawImageId)
+    if not rawImageId or rawImageId == "" then return FALLBACK_IMAGE_URL end
+    local assetId = string.match(tostring(rawImageId), "%d+")
+    if not assetId then return FALLBACK_IMAGE_URL end
+
+    local apiUrl = "https://thumbnails.roblox.com/v1/assets?assetIds=" .. assetId .. "&size=420x420&format=Png&isCircular=false"
+    local success, response = pcall(function()
+        return httpRequest({ Url = apiUrl, Method = "GET" })
+    end)
+
+    if success and response and response.StatusCode == 200 then
+        local decodeSuccess, data = pcall(function()
+            return HttpService:JSONDecode(response.Body)
+        end)
+        if decodeSuccess and data and data.data and data.data[1] and data.data[1].imageUrl then
+            return data.data[1].imageUrl
+        end
+    end
+
+    return "https://www.roblox.com/asset-thumbnail/image?assetId=" .. assetId .. "&width=420&height=420&format=png"
+end
+
+local function GetRarityDetails(typeText)
+    local upperText = string.upper(typeText)
+    if string.find(upperText, "SECRET") then
+        return COLOR_CYAN, "SECRET", true
+    elseif string.find(upperText, "MYTHIC") then
+        return COLOR_PINK_RED, "MYTHIC", true
+    end
+    return nil, "", false
+end
+
+local function ScanShopAndNotify()
+    local mafiaUI = LOCAL_PLAYER.PlayerGui:FindFirstChild("MafiaWarsUI")
+    if not mafiaUI then return end
+
+    local shopPanel = mafiaUI:FindFirstChild("Root") 
+        and mafiaUI.Root:FindFirstChild("Content") 
+        and mafiaUI.Root.Content:FindFirstChild("ShopPanel")
+    if not shopPanel then return end
+
+    local cashScroller = shopPanel:FindFirstChild("CashScroller")
+    if not cashScroller then return end
+
+    local currentlyVisible = {}
+
+    for _, itemFrame in ipairs(cashScroller:GetChildren()) do
+        if itemFrame:IsA("GuiObject") and string.match(itemFrame.Name, "^Shop_") and itemFrame.Visible then
+            currentlyVisible[itemFrame.Name] = true
+
+            local typeLabel = itemFrame:FindFirstChild("ItemText", true) or itemFrame:FindFirstChild("TypeText", true)
+            local rawTypeText = typeLabel and typeLabel.Text or ""
+            local cleanedType = CleanText(rawTypeText)
+
+            local color, rarityName, isTargetRarity = GetRarityDetails(cleanedType)
+
+            if isTargetRarity and not notifiedItems[itemFrame.Name] then
+                local priceLabel = itemFrame:FindFirstChild("PriceText", true)
+                local statLabel = itemFrame:FindFirstChild("StatText", true)
+                local nameLabel = itemFrame:FindFirstChild("ItemName", true)
+
+                local priceText = priceLabel and CleanText(priceLabel.Text) or "N/A"
+                local statText = statLabel and CleanText(statLabel.Text) or "None"
+                local itemName = nameLabel and CleanText(nameLabel.Text) or itemFrame.Name
+
+                local rawImageId = ""
+                local iconPlate = itemFrame:FindFirstChild("IconPlate", true) or itemFrame:FindFirstChild("Icon", true)
+                
+                if iconPlate then
+                    local itemIcon = iconPlate:FindFirstChild("ItemIcon", true) or iconPlate:FindFirstChildOfClass("ImageLabel")
+                    if itemIcon then rawImageId = itemIcon.Image end
+                else
+                    local imgObj = itemFrame:FindFirstChildOfClass("ImageLabel", true)
+                    if imgObj then rawImageId = imgObj.Image end
+                end
+
+                local imageUrl = FetchImageUrl(rawImageId)
+
+                local embedData = {
+                    ["title"] = "🔥 " .. itemName,
+                    ["color"] = color,
+                    ["fields"] = {
+                        { ["name"] = "✨ Rarity", ["value"] = rarityName, ["inline"] = true },
+                        { ["name"] = "💰 Price", ["value"] = priceText, ["inline"] = true },
+                        { ["name"] = "⚔️ Stats", ["value"] = statText, ["inline"] = false },
+                        { ["name"] = "📦 Type", ["value"] = string.upper(cleanedType), ["inline"] = false }
+                    },
+                    ["thumbnail"] = { ["url"] = imageUrl },
+                    ["footer"] = { ["text"] = "Mafia Wars High-Rarity Tracker" },
+                    ["timestamp"] = DateTime.now():ToIsoDate()
+                }
+
+                pcall(function()
+                    httpRequest({
+                        Url = BOT_API_URL,
+                        Method = "POST",
+                        Headers = { 
+                            ["Content-Type"] = "application/json",
+                            ["Authorization"] = "Bearer " .. SECRET_KEY
+                        },
+                        Body = HttpService:JSONEncode({ embed = embedData })
+                    })
+                end)
+
+                notifiedItems[itemFrame.Name] = true
+                task.wait(0.5)
+            end
+        end
+    end
+
+    for cachedName, _ in pairs(notifiedItems) do
+        if not currentlyVisible[cachedName] then
+            notifiedItems[cachedName] = nil
+        end
+    end
+end
+
+task.spawn(function()
+    print("[Bot Multi-Server Broadcaster] Scanner active...")
+    while true do
+        pcall(ScanShopAndNotify)
+        task.wait(SCAN_INTERVAL)
+    end
+end)
