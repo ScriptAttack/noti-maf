@@ -1,0 +1,123 @@
+local HttpService = game:GetService("HttpService")
+local Players = game:GetService("Players")
+
+-- ================= CONFIGURATION =================
+local WEBHOOK_URL = "https://discord.com/api/webhooks/1549486969220890737/2RYHoKo77nt1lsbGnaddqJtqWgfbllssylfSsUzxNKdNyCyyvtsKIBHT4zUA5Mkx_d-s"
+local DISCORD_ROLE_OR_USER_PING = "" -- Add ping like "<@&ROLE_ID>" or "@everyone" if desired
+
+local LOCAL_PLAYER = Players.LocalPlayer
+local SHOP_SCROLLER = LOCAL_PLAYER:WaitForChild("PlayerGui")
+    :WaitForChild("MafiaWarsUI")
+    :WaitForChild("Root")
+    :WaitForChild("Content")
+    :WaitForChild("ShopPanel")
+    :WaitForChild("CashScroller")
+
+-- Rarity Color Palette (Decimal Format)
+local COLOR_CYAN = 65535         -- Cyan (#00FFFF) for Secret
+local COLOR_PINK_RED = 13323087   -- Dark Pinkish-Red (#CB2C4F) for Mythic
+-- =================================================
+
+-- Helper function to convert rbxassetid:// into a web image URL for Discord
+local function FormatAssetUrl(rbxAssetId)
+    local assetId = string.match(rbxAssetId, "%d+")
+    if assetId then
+        return "https://assetgame.roblox.com/Game/Tools/ThumbnailAsset.ashx?aid=" .. assetId .. "&fmt=png&wd=420&ht=420"
+    end
+    return nil
+end
+
+-- Checks rarity type and returns matching embed color + whether it should trigger an alert
+local function GetRarityDetails(typeText)
+    local upperText = string.upper(typeText)
+    
+    if string.find(upperText, "SECRET") then
+        return COLOR_CYAN, true
+    elseif string.find(upperText, "MYTHIC") then
+        return COLOR_PINK_RED, true
+    end
+    
+    return nil, false -- Ignore Common, Rare, Epic, Legendary, etc.
+end
+
+-- Main function to scan the shop
+local function ScanShopAndNotify()
+    local shopItems = {}
+
+    for _, itemFrame in ipairs(SHOP_SCROLLER:GetChildren()) do
+        -- Filter items starting with "Shop_" and check if visible
+        if string.sub(itemFrame.Name, 1, 5) == "Shop_" and itemFrame.Visible then
+            local typeText = itemFrame:FindFirstChild("TypeText") and itemFrame.TypeText.Text or "Unknown"
+            local color, isTargetRarity = GetRarityDetails(typeText)
+
+            -- Only process if item is Secret or Mythic
+            if isTargetRarity then
+                local priceText = itemFrame:FindFirstChild("PriceText") and itemFrame.PriceText.Text or "N/A"
+                local statText = itemFrame:FindFirstChild("StatText") and itemFrame.StatText.Text or "None"
+                local itemName = itemFrame:FindFirstChild("ItemName") and itemFrame.ItemName.Text or itemFrame.Name
+                
+                -- Icon extraction
+                local iconPlate = itemFrame:FindFirstChild("IconPlate")
+                local itemIcon = iconPlate and iconPlate:FindFirstChild("ItemIcon")
+                local rawImageId = itemIcon and itemIcon.Image or ""
+                local imageUrl = FormatAssetUrl(rawImageId)
+
+                table.insert(shopItems, {
+                    Name = itemName,
+                    Type = typeText,
+                    Price = priceText,
+                    Stats = statText,
+                    ImageUrl = imageUrl,
+                    Color = color
+                })
+            end
+        end
+    end
+
+    -- Send Discord Webhooks for Secret and Mythic items
+    for _, item in ipairs(shopItems) do
+        local embedData = {
+            ["title"] = "🔥 " .. item.Name,
+            ["color"] = item.Color,
+            ["fields"] = {
+                { ["name"] = "✨ Rarity / Type", ["value"] = item.Type, ["inline"] = true },
+                { ["name"] = "💰 Price", ["value"] = item.Price, ["inline"] = true },
+                { ["name"] = "⚔️ Stats", ["value"] = item.Stats, ["inline"] = false }
+            },
+            ["footer"] = { ["text"] = "Mafia Wars High-Rarity Tracker" },
+            ["timestamp"] = DateTime.now():ToIsoDate()
+        }
+
+        if item.ImageUrl then
+            embedData["thumbnail"] = { ["url"] = item.ImageUrl }
+        end
+
+        local payloadData = {
+            ["username"] = "Shop Tracker",
+            ["embeds"] = { embedData }
+        }
+
+        if DISCORD_ROLE_OR_USER_PING ~= "" then
+            payloadData["content"] = DISCORD_ROLE_OR_USER_PING
+        end
+
+        local payload = HttpService:JSONEncode(payloadData)
+
+        -- Request execution cross-compatibility
+        local httpRequest = (syn and syn.request) or (http and http.request) or request or HttpService.RequestAsync
+        
+        if httpRequest then
+            httpRequest({
+                Url = WEBHOOK_URL,
+                Method = "POST",
+                Headers = { ["Content-Type"] = "application/json" },
+                Body = payload
+            })
+        end
+        
+        task.wait(0.5) -- Avoid Discord rate limits
+    end
+end
+
+-- Execute Scan
+ScanShopAndNotify()
