@@ -1,0 +1,315 @@
+local HttpService = game:GetService("HttpService")
+local Players = game:GetService("Players")
+
+-- ================= CONFIGURATION =================
+local WEBHOOK_URL = "https://discord.com/api/webhooks/1549486969220890737/2RYHoKo77nt1lsbGnaddqJtqWgfbllssylfSsUzxNKdNyCyyvtsKIBHT4zUA5Mkx_d-s"
+
+-- Roblox blocks direct Discord webhook requests in some environments.
+WEBHOOK_URL = string.gsub(WEBHOOK_URL, "discord%.com", "webhook.lewisakura.moe")
+WEBHOOK_URL = string.gsub(WEBHOOK_URL, "discordapp%.com", "webhook.lewisakura.moe")
+
+local LOCAL_PLAYER = Players.LocalPlayer
+
+local SHOP_SCROLLER = LOCAL_PLAYER
+    :WaitForChild("PlayerGui")
+    :WaitForChild("MafiaWarsUI")
+    :WaitForChild("Root")
+    :WaitForChild("Content")
+    :WaitForChild("ShopPanel")
+    :WaitForChild("CashScroller")
+
+-- Discord embed colors
+local COLOR_SECRET = 65535
+local COLOR_MYTHIC = 13323087
+
+-- Keep track of items we already notified about
+local notifiedItems = {}
+
+-- =================================================
+
+-- Multi-executor HTTP request
+local http_req =
+    (syn and syn.request)
+    or (http and http.request)
+    or http_request
+    or request
+    or HttpService.RequestAsync
+
+
+-- =================================================
+-- Get numeric asset ID
+-- Example:
+-- rbxassetid://132338538559626
+-- becomes:
+-- 132338538559626
+-- =================================================
+
+local function GetAssetId(image)
+    if not image then
+        return nil
+    end
+
+    return string.match(image, "%d+")
+end
+
+
+-- =================================================
+-- Convert Roblox asset to thumbnail URL
+-- =================================================
+
+local function GetIconUrl(image)
+    local assetId = GetAssetId(image)
+
+    if not assetId then
+        return nil
+    end
+
+    return "https://assetgame.roblox.com/Game/Tools/ThumbnailAsset.ashx?aid="
+        .. assetId
+        .. "&fmt=png&wd=420&ht=420"
+end
+
+
+-- =================================================
+-- Determine rarity
+-- =================================================
+
+local function GetRarity(typeText)
+    local text = string.upper(typeText or "")
+
+    if string.find(text, "SECRET", 1, true) then
+        return "SECRET", COLOR_SECRET
+    end
+
+    if string.find(text, "MYTHIC", 1, true) then
+        return "MYTHIC", COLOR_MYTHIC
+    end
+
+    return nil, nil
+end
+
+
+-- =================================================
+-- Send webhook
+-- =================================================
+
+local function SendWebhook(itemName, rarity, price, stats, iconUrl, typeText)
+
+    if not http_req then
+        warn("[Shop Monitor] No HTTP request function available.")
+        return
+    end
+
+    local embed = {
+        ["title"] = "🔥 " .. itemName,
+
+        ["color"] = rarity == "SECRET"
+            and COLOR_SECRET
+            or COLOR_MYTHIC,
+
+        ["fields"] = {
+            {
+                ["name"] = "✨ Rarity",
+                ["value"] = rarity,
+                ["inline"] = true
+            },
+
+            {
+                ["name"] = "💰 Price",
+                ["value"] = price ~= "" and price or "N/A",
+                ["inline"] = true
+            },
+
+            {
+                ["name"] = "⚔️ Stats",
+                ["value"] = stats ~= "" and stats or "N/A",
+                ["inline"] = false
+            },
+
+            {
+                ["name"] = "📦 Type",
+                ["value"] = typeText ~= "" and typeText or "N/A",
+                ["inline"] = false
+            }
+        },
+
+        ["footer"] = {
+            ["text"] = "Mafia Wars High-Rarity Tracker"
+        }
+    }
+
+    if iconUrl then
+        embed["thumbnail"] = {
+            ["url"] = iconUrl
+        }
+    end
+
+    local payload = HttpService:JSONEncode({
+        ["username"] = "Shop Tracker",
+        ["embeds"] = {
+            embed
+        }
+    })
+
+    task.spawn(function()
+
+        local success, response = pcall(function()
+            return http_req({
+                Url = WEBHOOK_URL,
+                Method = "POST",
+
+                Headers = {
+                    ["Content-Type"] = "application/json"
+                },
+
+                Body = payload
+            })
+        end)
+
+        if success then
+            print(
+                "[Shop Monitor] Webhook sent:",
+                itemName,
+                "|",
+                rarity,
+                "|",
+                response and response.StatusCode or "Unknown"
+            )
+        else
+            warn("[Shop Monitor] Webhook error:", response)
+        end
+
+    end)
+end
+
+
+-- =================================================
+-- Scan all shop items
+-- =================================================
+
+local function ScanShop()
+
+    print("====================================")
+    print("[Shop Monitor] Scanning shop...")
+    print("====================================")
+
+    local found = 0
+
+    for _, itemFrame in ipairs(SHOP_SCROLLER:GetChildren()) do
+
+        -- Every shop item starts with Shop_w_
+        if string.sub(itemFrame.Name, 1, 7) == "Shop_w_" then
+
+            -- Only process items currently visible
+            if itemFrame:IsA("GuiObject") and itemFrame.Visible then
+
+                local typeTextObject = itemFrame:FindFirstChild("TypeText")
+                local priceTextObject = itemFrame:FindFirstChild("PriceText")
+                local statTextObject = itemFrame:FindFirstChild("StatText")
+                local itemNameObject = itemFrame:FindFirstChild("ItemName")
+
+                local typeText = typeTextObject
+                    and typeTextObject.Text
+                    or ""
+
+                local price = priceTextObject
+                    and priceTextObject.Text
+                    or ""
+
+                local stats = statTextObject
+                    and statTextObject.Text
+                    or ""
+
+                local itemName = itemNameObject
+                    and itemNameObject.Text
+                    or itemFrame.Name
+
+                -- Check rarity
+                local rarity, color = GetRarity(typeText)
+
+                if rarity then
+
+                    found = found + 1
+
+                    -- Icon
+                    local iconUrl = nil
+
+                    local iconPlate = itemFrame:FindFirstChild("IconPlate")
+
+                    if iconPlate then
+
+                        local itemIcon = iconPlate:FindFirstChild("ItemIcon")
+
+                        if itemIcon then
+                            iconUrl = GetIconUrl(itemIcon.Image)
+
+                            print(
+                                "[Shop Monitor] Icon:",
+                                itemIcon.Image
+                            )
+                        end
+                    end
+
+                    print("------------------------------------")
+                    print("Item:", itemName)
+                    print("Rarity:", rarity)
+                    print("Price:", price)
+                    print("Stats:", stats)
+                    print("Frame:", itemFrame.Name)
+
+                    if iconUrl then
+                        print("Icon URL:", iconUrl)
+                    end
+
+                    -- Create unique ID for this shop item
+                    local uniqueId =
+                        itemFrame.Name
+                        .. "|"
+                        .. itemName
+                        .. "|"
+                        .. price
+                        .. "|"
+                        .. stats
+
+                    -- Prevent duplicate webhook messages
+                    if not notifiedItems[uniqueId] then
+
+                        notifiedItems[uniqueId] = true
+
+                        SendWebhook(
+                            itemName,
+                            rarity,
+                            price,
+                            stats,
+                            iconUrl,
+                            typeText
+                        )
+
+                        task.wait(0.5)
+
+                    else
+                        print("[Shop Monitor] Already notified:", itemName)
+                    end
+                end
+            end
+        end
+    end
+
+    print("------------------------------------")
+
+    if found == 0 then
+        print("[Shop Monitor] No visible Secret/Mythic items found.")
+    else
+        print(
+            "[Shop Monitor] Found",
+            found,
+            "visible high-rarity item(s)."
+        )
+    end
+
+    print("====================================")
+end
+
+
+-- Initial scan
+ScanShop()
