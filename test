@@ -3,8 +3,8 @@ local Players = game:GetService("Players")
 
 -- ================= CONFIGURATION =================
 local WEBHOOK_URL = "https://discord.com/api/webhooks/1549486969220890737/2RYHoKo77nt1lsbGnaddqJtqWgfbllssylfSsUzxNKdNyCyyvtsKIBHT4zUA5Mkx_d-s"
-local DISCORD_ROLE_OR_USER_PING = "" -- Add ping like "<@&ROLE_ID>" or "@everyone"
-local SCAN_INTERVAL = 5 -- How often to check the shop (in seconds)
+local DISCORD_ROLE_OR_USER_PING = "" -- e.g. "<@&ROLE_ID>" or "@everyone"
+local SCAN_INTERVAL = 5 -- Check every 5 seconds
 
 local COLOR_CYAN = 65535         -- Cyan (#00FFFF) for Secret
 local COLOR_PINK_RED = 13323087   -- Dark Pinkish-Red (#CB2C4F) for Mythic
@@ -12,9 +12,9 @@ local COLOR_PINK_RED = 13323087   -- Dark Pinkish-Red (#CB2C4F) for Mythic
 
 local LOCAL_PLAYER = Players.LocalPlayer
 local httpRequest = request or http_request or (syn and syn.request) or (http and http.request)
-local notifiedItems = {} -- Stores items already sent during the current shop cycle
+local notifiedItems = {} -- Prevents duplicate webhooks for the same shop cycle
 
--- Strips XML/HTML tags and trims whitespace
+-- Strips XML/HTML/RichText tags and trims whitespace
 local function CleanText(rawText)
     if not rawText then return "" end
     local clean = string.gsub(rawText, "<[^>]- >", "")
@@ -23,17 +23,32 @@ local function CleanText(rawText)
     return string.match(clean, "^%s*(.-)%s*$") or ""
 end
 
--- Converts any asset ID / rbxassetid string directly into a clean Discord-compatible image URL
+-- Multi-fallback thumbnail extractor for Discord compatibility
 local function FetchImageUrl(rawImageId)
     if not rawImageId or rawImageId == "" then return nil end
-    local assetId = string.match(rawImageId, "%d+")
+    local assetId = string.match(to_string and to_string(rawImageId) or tostring(rawImageId), "%d+")
     if not assetId then return nil end
 
-    -- Direct CDN delivery URL (Bypasses API JSON parsing and state checks)
-    return "https://www.roblox.com/asset-thumbnail/image?assetId=" .. assetId .. "&width=420&height=420&format=png"
+    -- Strategy 1: Try Roblox Official Thumbnails Batch API
+    local apiUrl = "https://thumbnails.roblox.com/v1/assets?assetIds=" .. assetId .. "&size=420x420&format=Png&isCircular=false"
+    local success, response = pcall(function()
+        return httpRequest({ Url = apiUrl, Method = "GET" })
+    end)
+
+    if success and response and response.StatusCode == 200 then
+        local decodeSuccess, data = pcall(function()
+            return HttpService:JSONDecode(response.Body)
+        end)
+        if decodeSuccess and data and data.data and data.data[1] and data.data[1].imageUrl then
+            return data.data[1].imageUrl
+        end
+    end
+
+    -- Strategy 2: Directly resolve using Roblox Asset Endpoint
+    return "https://assetgame.roblox.com/Game/Tools/ThumbnailAsset.ashx?aid=" .. assetId .. "&fmt=png&wd=420&ht=420"
 end
 
--- Checks rarity type and returns matching embed color, raw rarity string, and alert status
+-- Evaluates rarity and assigns embed color
 local function GetRarityDetails(typeText)
     local upperText = string.upper(typeText)
     if string.find(upperText, "SECRET") then
@@ -44,7 +59,7 @@ local function GetRarityDetails(typeText)
     return nil, "", false
 end
 
--- Main function to scan the shop
+-- Main Shop Scanner
 local function ScanShopAndNotify()
     local mafiaUI = LOCAL_PLAYER.PlayerGui:FindFirstChild("MafiaWarsUI")
     if not mafiaUI then return end
@@ -79,10 +94,22 @@ local function ScanShopAndNotify()
                     local statText = statLabel and CleanText(statLabel.Text) or "None"
                     local itemName = nameLabel and CleanText(nameLabel.Text) or itemFrame.Name
 
-                    -- Icon extraction
-                    local iconPlate = itemFrame:FindFirstChild("IconPlate", true)
-                    local itemIcon = iconPlate and (iconPlate:FindFirstChild("ItemIcon", true) or iconPlate:FindFirstChildOfClass("ImageLabel"))
-                    local rawImageId = itemIcon and itemIcon.Image or ""
+                    -- Icon Extraction Across Multiple Common UI Layouts
+                    local rawImageId = ""
+                    local iconPlate = itemFrame:FindFirstChild("IconPlate", true) or itemFrame:FindFirstChild("Icon", true)
+                    
+                    if iconPlate then
+                        local itemIcon = iconPlate:FindFirstChild("ItemIcon", true) or iconPlate:FindFirstChildOfClass("ImageLabel")
+                        if itemIcon then
+                            rawImageId = itemIcon.Image
+                        end
+                    else
+                        local imgObj = itemFrame:FindFirstChildOfClass("ImageLabel", true)
+                        if imgObj then
+                            rawImageId = imgObj.Image
+                        end
+                    end
+
                     local imageUrl = FetchImageUrl(rawImageId)
 
                     local embedData = {
@@ -98,7 +125,8 @@ local function ScanShopAndNotify()
                         ["timestamp"] = DateTime.now():ToIsoDate()
                     }
 
-                    if imageUrl then
+                    -- Only insert thumbnail if a valid URL was returned
+                    if imageUrl and imageUrl ~= "" then
                         embedData["thumbnail"] = { ["url"] = imageUrl }
                     end
 
@@ -121,13 +149,13 @@ local function ScanShopAndNotify()
                     end)
 
                     notifiedItems[itemFrame.Name] = true
-                    task.wait(0.5) -- Avoid Discord rate limits
+                    task.wait(0.5) -- Prevent Discord rate limiting
                 end
             end
         end
     end
 
-    -- Clear cache for items that disappear/hide so future shop cycles alert again
+    -- Clear cache for items that disappear so future rotations notify again
     for cachedName, _ in pairs(notifiedItems) do
         if not currentlyVisible[cachedName] then
             notifiedItems[cachedName] = nil
@@ -135,9 +163,9 @@ local function ScanShopAndNotify()
     end
 end
 
--- Continuous background thread
+-- Continuous background loop
 task.spawn(function()
-    print("[Shop Monitor] Active! Watching CashScroller...")
+    print("[Shop Tracker] Running scanner loop...")
     while true do
         pcall(ScanShopAndNotify)
         task.wait(SCAN_INTERVAL)
