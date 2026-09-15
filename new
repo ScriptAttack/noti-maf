@@ -9,7 +9,7 @@ local mafiaUI = player.PlayerGui:WaitForChild("MafiaWarsUI", 10)
 local shopPanel = mafiaUI.Root.Content.ShopPanel
 local cashScroller = shopPanel:WaitForChild("CashScroller", 10)
 
-local ALLOWED_RARITIES = { SECRET = true, MYTHIC = true, LEGENDARY = true }
+local ALLOWED_RARITIES = { SECRET = true, MYTHIC = true }
 local RARITY_KEYWORDS = { "SECRET", "MYTHIC", "LEGENDARY", "EPIC", "RARE", "UNCOMMON", "COMMON" }
 local RARITY_COLORS = {
     SECRET = 0xFF0000, MYTHIC = 0xFF00FF, LEGENDARY = 0xFFA500,
@@ -22,6 +22,12 @@ local function getRarity(typeText)
         if string.find(upper, keyword) then return keyword end
     end
     return "UNKNOWN"
+end
+
+local function getAssetImageUrl(assetImage)
+    local assetId = string.match(assetImage, "%d+")
+    if not assetId then return nil end
+    return "https://www.roblox.com/asset-thumbnail/image?assetId=" .. assetId .. "&width=420&height=420&format=png"
 end
 
 local function sendWebhook(item)
@@ -63,7 +69,7 @@ local function readItem(itemFrame)
         Price = priceLabel.Text,
         Stat = statLabel.Text,
         Rarity = getRarity(typeLabel.Text),
-        Icon = icon and icon.Image or "",
+        Icon = icon and getAssetImageUrl(icon.Image) or "",
     }
 end
 
