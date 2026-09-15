@@ -23,14 +23,55 @@ local function CleanText(rawText)
     return string.match(clean, "^%s*(.-)%s*$") or ""
 end
 
--- Direct CDN Resolver for Decals, Images, and Textures
+-- Force-render 3D Models / Accessories / Decals using Roblox's Batch Thumbnail API
 local function FetchImageUrl(rawImageId)
     if not rawImageId or rawImageId == "" then return nil end
     local assetId = string.match(tostring(rawImageId), "%d+")
     if not assetId then return nil end
 
-    -- Uses Roblox's CDN endpoint which automatically resolves Decal IDs to Texture PNGs
-    return "https://rbxcdn.com/" .. assetId
+    -- Batch request payload forcing an 'ItemTile' 2D render
+    local payload = HttpService:JSONEncode({
+        {
+            requestId = assetId .. "::ItemTile:150x150:png:regular",
+            type = "ItemTile",
+            targetId = tonumber(assetId),
+            format = "png",
+            size = "150x150"
+        },
+        {
+            requestId = assetId .. "::Asset:420x420:png:regular",
+            type = "Asset",
+            targetId = tonumber(assetId),
+            format = "png",
+            size = "420x420"
+        }
+    })
+
+    local success, response = pcall(function()
+        return httpRequest({
+            Url = "https://thumbnails.roblox.com/v1/batch",
+            Method = "POST",
+            Headers = { ["Content-Type"] = "application/json" },
+            Body = payload
+        })
+    end)
+
+    if success and response and response.StatusCode == 200 then
+        local decodeSuccess, data = pcall(function()
+            return HttpService:JSONDecode(response.Body)
+        end)
+
+        if decodeSuccess and data and data.data then
+            for _, item in ipairs(data.data) do
+                if item.state == "Completed" and item.imageUrl then
+                    return item.imageUrl
+                end
+            end
+        end
+    end
+
+    -- Fallback to standard asset thumbnail endpoint if batch API is unreachable
+    return "https://www.roblox.com/asset-thumbnail/image?assetId=" .. assetId .. "&width=420&height=420&format=png"
 end
 
 -- Evaluates rarity and assigns embed color
@@ -79,7 +120,7 @@ local function ScanShopAndNotify()
                     local statText = statLabel and CleanText(statLabel.Text) or "None"
                     local itemName = nameLabel and CleanText(nameLabel.Text) or itemFrame.Name
 
-                    -- Extract Icon/Image ID
+                    -- Extract Icon/Image ID across ImageLabel and ViewportFrame textures
                     local rawImageId = ""
                     local iconPlate = itemFrame:FindFirstChild("IconPlate", true) or itemFrame:FindFirstChild("Icon", true)
                     
@@ -110,7 +151,7 @@ local function ScanShopAndNotify()
                         ["timestamp"] = DateTime.now():ToIsoDate()
                     }
 
-                    if imageUrl then
+                    if imageUrl and imageUrl ~= "" then
                         embedData["thumbnail"] = { ["url"] = imageUrl }
                     end
 
@@ -149,7 +190,7 @@ end
 
 -- Continuous background loop
 task.spawn(function()
-    print("[Shop Tracker] Running scanner loop...")
+    print("[Shop Tracker] Scanner initialized!")
     while true do
         pcall(ScanShopAndNotify)
         task.wait(SCAN_INTERVAL)
