@@ -1,0 +1,98 @@
+local Players = game:GetService("Players")
+local HttpService = game:GetService("HttpService")
+
+local WEBHOOK_URL = "https://discord.com/api/webhooks/1549486969220890737/2RYHoKo77nt1lsbGnaddqJtqWgfbllssylfSsUzxNKdNyCyyvtsKIBHT4zUA5Mkx_d-s"
+local httpRequest = request or http_request or (syn and syn.request) or (http and http.request)
+
+local player = Players.LocalPlayer
+local mafiaUI = player.PlayerGui:WaitForChild("MafiaWarsUI", 10)
+local shopPanel = mafiaUI.Root.Content.ShopPanel
+local cashScroller = shopPanel:WaitForChild("CashScroller", 10)
+
+local ALLOWED_RARITIES = { SECRET = true, MYTHIC = true, LEGENDARY = true }
+local RARITY_KEYWORDS = { "SECRET", "MYTHIC", "LEGENDARY", "EPIC", "RARE", "UNCOMMON", "COMMON" }
+local RARITY_COLORS = {
+    SECRET = 0xFF0000, MYTHIC = 0xFF00FF, LEGENDARY = 0xFFA500,
+    EPIC = 0x9400D3, RARE = 0x1E90FF, UNCOMMON = 0x00FF7F, COMMON = 0xAAAAAA,
+}
+
+local function getRarity(typeText)
+    local upper = string.upper(typeText)
+    for _, keyword in ipairs(RARITY_KEYWORDS) do
+        if string.find(upper, keyword) then return keyword end
+    end
+    return "UNKNOWN"
+end
+
+local function sendWebhook(item)
+    local embed = {
+        title = item.Name,
+        color = RARITY_COLORS[item.Rarity] or 0xFFFFFF,
+        thumbnail = { url = item.Icon },
+        fields = {
+            { name = "Rarity", value = item.Rarity, inline = true },
+            { name = "Price",  value = item.Price,  inline = true },
+            { name = "Stat",   value = item.Stat,   inline = true },
+        },
+        timestamp = DateTime.now():ToIsoDate(),
+    }
+    pcall(function()
+        httpRequest({
+            Url = WEBHOOK_URL,
+            Method = "POST",
+            Headers = { ["Content-Type"] = "application/json" },
+            Body = HttpService:JSONEncode({ embeds = { embed } }),
+        })
+    end)
+end
+
+local function readItem(itemFrame)
+    local itemNameLabel = itemFrame:FindFirstChild("ItemName")
+    local priceLabel     = itemFrame:FindFirstChild("PriceText")
+    local statLabel      = itemFrame:FindFirstChild("StatText")
+    local typeLabel       = itemFrame:FindFirstChild("TypeText")
+    local iconPlate       = itemFrame:FindFirstChild("IconPlate")
+    local icon            = iconPlate and iconPlate:FindFirstChild("ItemIcon")
+
+    if not (itemNameLabel and priceLabel and statLabel and typeLabel) then
+        return nil
+    end
+
+    return {
+        Name = itemNameLabel.Text,
+        Price = priceLabel.Text,
+        Stat = statLabel.Text,
+        Rarity = getRarity(typeLabel.Text),
+        Icon = icon and icon.Image or "",
+    }
+end
+
+local notified = {}
+
+local function checkItem(itemFrame)
+    if not itemFrame:IsA("GuiObject") then return end
+    if not string.match(itemFrame.Name, "^Shop_") then return end
+
+    if itemFrame.Visible then
+        if notified[itemFrame.Name] then return end
+        local data = readItem(itemFrame)
+        if not data then return end
+        if ALLOWED_RARITIES[data.Rarity] then
+            sendWebhook(data)
+        end
+        notified[itemFrame.Name] = true
+    else
+        notified[itemFrame.Name] = nil
+    end
+end
+
+for _, itemFrame in ipairs(cashScroller:GetChildren()) do
+    pcall(function()
+        if itemFrame:IsA("GuiObject") and string.match(itemFrame.Name, "^Shop_") then
+            checkItem(itemFrame)
+            itemFrame:GetPropertyChangedSignal("Visible"):Connect(function()
+                checkItem(itemFrame)
+            end)
+        end
+    end)
+end
