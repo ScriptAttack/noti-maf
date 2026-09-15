@@ -23,27 +23,14 @@ local function CleanText(rawText)
     return string.match(clean, "^%s*(.-)%s*$") or ""
 end
 
--- Fetches asset thumbnails via Roblox API call
+-- Converts any asset ID / rbxassetid string directly into a clean Discord-compatible image URL
 local function FetchImageUrl(rawImageId)
     if not rawImageId or rawImageId == "" then return nil end
     local assetId = string.match(rawImageId, "%d+")
     if not assetId then return nil end
 
-    local apiUrl = "https://thumbnails.roblox.com/v1/assets?assetIds=" .. assetId .. "&size=420x420&format=Png&isCircular=false"
-    local success, response = pcall(function()
-        return httpRequest({ Url = apiUrl, Method = "GET" })
-    end)
-
-    if success and response and response.StatusCode == 200 then
-        local decodeSuccess, data = pcall(function()
-            return HttpService:JSONDecode(response.Body)
-        end)
-        if decodeSuccess and data and data.data and data.data[1] and data.data[1].imageUrl then
-            return data.data[1].imageUrl
-        end
-    end
-
-    return "https://assetgame.roblox.com/Game/Tools/ThumbnailAsset.ashx?aid=" .. assetId .. "&fmt=png&wd=420&ht=420"
+    -- Direct CDN delivery URL (Bypasses API JSON parsing and state checks)
+    return "https://www.roblox.com/asset-thumbnail/image?assetId=" .. assetId .. "&width=420&height=420&format=png"
 end
 
 -- Checks rarity type and returns matching embed color, raw rarity string, and alert status
@@ -73,7 +60,6 @@ local function ScanShopAndNotify()
     local currentlyVisible = {}
 
     for _, itemFrame in ipairs(cashScroller:GetChildren()) do
-        -- Checks for valid shop items that are currently visible
         if itemFrame:IsA("GuiObject") and string.match(itemFrame.Name, "^Shop_") and itemFrame.Visible then
             currentlyVisible[itemFrame.Name] = true
 
@@ -84,7 +70,6 @@ local function ScanShopAndNotify()
             local color, rarityName, isTargetRarity = GetRarityDetails(cleanedType)
 
             if isTargetRarity then
-                -- Only send if we haven't already alerted for this specific frame in this rotation
                 if not notifiedItems[itemFrame.Name] then
                     local priceLabel = itemFrame:FindFirstChild("PriceText", true)
                     local statLabel = itemFrame:FindFirstChild("StatText", true)
@@ -96,7 +81,7 @@ local function ScanShopAndNotify()
 
                     -- Icon extraction
                     local iconPlate = itemFrame:FindFirstChild("IconPlate", true)
-                    local itemIcon = iconPlate and iconPlate:FindFirstChild("ItemIcon", true)
+                    local itemIcon = iconPlate and (iconPlate:FindFirstChild("ItemIcon", true) or iconPlate:FindFirstChildOfClass("ImageLabel"))
                     local rawImageId = itemIcon and itemIcon.Image or ""
                     local imageUrl = FetchImageUrl(rawImageId)
 
@@ -142,7 +127,7 @@ local function ScanShopAndNotify()
         end
     end
 
-    -- Automatically clear items from memory when they disappear from the shop
+    -- Clear cache for items that disappear/hide so future shop cycles alert again
     for cachedName, _ in pairs(notifiedItems) do
         if not currentlyVisible[cachedName] then
             notifiedItems[cachedName] = nil
@@ -150,9 +135,9 @@ local function ScanShopAndNotify()
     end
 end
 
--- Start continuous background thread
+-- Continuous background thread
 task.spawn(function()
-    print("[Shop Monitor] Auto-tracker initialized! Monitoring every " .. SCAN_INTERVAL .. " seconds...")
+    print("[Shop Monitor] Active! Watching CashScroller...")
     while true do
         pcall(ScanShopAndNotify)
         task.wait(SCAN_INTERVAL)
