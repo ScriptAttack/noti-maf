@@ -2,19 +2,38 @@ local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
 
 -- ================= CONFIGURATION =================
-local WEBHOOK_URL = "https://discord.com/api/webhooks/1549486969220890737/2RYHoKo77nt1lsbGnaddqJtqWgfbllssylfSsUzxNKdNyCyyvtsKIBHT4zUA5Mkx_d-s"
-local DISCORD_ROLE_OR_USER_PING = "" -- Add ping like "<@&ROLE_ID>" or "@everyone"
-local SCAN_INTERVAL = 2 -- How often to check the shop (in seconds)
+-- Insert your target Discord Webhook URL here
+local ORIGINAL_WEBHOOK_URL = "https://discord.com/api/webhooks/1549486969220890737/2RYHoKo77nt1lsbGnaddqJtqWgfbllssylfSsUzxNKdNyCyyvtsKIBHT4zUA5Mkx_d-s"
+
+-- Target Proxy Server (e.g., "webhook.lewisakura.moe", "hooks.hyra.io", or your custom endpoint)
+local PROXY_DOMAIN = "webhook.lewisakura.moe"
+
+local DISCORD_ROLE_OR_USER_PING = "" -- e.g. "<@&ROLE_ID>" or "@everyone"
+local SCAN_INTERVAL = 5 -- Check every 5 seconds
 
 local COLOR_CYAN = 65535         -- Cyan (#00FFFF) for Secret
 local COLOR_PINK_RED = 13323087   -- Dark Pinkish-Red (#CB2C4F) for Mythic
+
+-- Fallback image URL if an asset ID fails to resolve
+local FALLBACK_IMAGE_URL = "https://tr.rbxcdn.com/1802100de51d0870ed362a75878d6b9d/150/150/Image/Png"
 -- =================================================
 
+-- Converts standard Discord URL to the target Proxy URL format
+local function GetProxyWebhookUrl(url, proxyDomain)
+    if string.find(url, "discord.com") or string.find(url, "discordapp.com") then
+        local formattedUrl = string.gsub(url, "discord%.com", proxyDomain)
+        formattedUrl = string.gsub(formattedUrl, "discordapp%.com", proxyDomain)
+        return formattedUrl
+    end
+    return url
+end
+
+local FINAL_WEBHOOK_URL = GetProxyWebhookUrl(ORIGINAL_WEBHOOK_URL, PROXY_DOMAIN)
 local LOCAL_PLAYER = Players.LocalPlayer
 local httpRequest = request or http_request or (syn and syn.request) or (http and http.request)
-local notifiedItems = {} -- Stores items already sent during the current shop cycle
+local notifiedItems = {}
 
--- Strips XML/HTML tags and trims whitespace
+-- Strips XML/HTML/RichText tags and trims whitespace
 local function CleanText(rawText)
     if not rawText then return "" end
     local clean = string.gsub(rawText, "<[^>]- >", "")
@@ -23,30 +42,21 @@ local function CleanText(rawText)
     return string.match(clean, "^%s*(.-)%s*$") or ""
 end
 
--- Fetches asset thumbnails via Roblox API call
-local function FetchImageUrl(rawImageId)
-    if not rawImageId or rawImageId == "" then return nil end
-    local assetId = string.match(rawImageId, "%d+")
-    if not assetId then return nil end
-
-    local apiUrl = "https://thumbnails.roblox.com/v1/assets?assetIds=" .. assetId .. "&size=420x420&format=Png&isCircular=false"
-    local success, response = pcall(function()
-        return httpRequest({ Url = apiUrl, Method = "GET" })
-    end)
-
-    if success and response and response.StatusCode == 200 then
-        local decodeSuccess, data = pcall(function()
-            return HttpService:JSONDecode(response.Body)
-        end)
-        if decodeSuccess and data and data.data and data.data[1] and data.data[1].imageUrl then
-            return data.data[1].imageUrl
-        end
+-- Converts any raw ID/rbxassetid into a guaranteed 2D PNG thumbnail
+local function GetGuaranteedImageUrl(rawImageId)
+    if not rawImageId or rawImageId == "" then
+        return FALLBACK_IMAGE_URL
     end
 
-    return "https://assetgame.roblox.com/Game/Tools/ThumbnailAsset.ashx?aid=" .. assetId .. "&fmt=png&wd=420&ht=420"
+    local assetId = string.match(tostring(rawImageId), "%d+")
+    if not assetId then
+        return FALLBACK_IMAGE_URL
+    end
+
+    return "https://www.roblox.com/asset-thumbnail/image?assetId=" .. assetId .. "&width=420&height=420&format=png"
 end
 
--- Checks rarity type and returns matching embed color, raw rarity string, and alert status
+-- Evaluates rarity and assigns embed color
 local function GetRarityDetails(typeText)
     local upperText = string.upper(typeText)
     if string.find(upperText, "SECRET") then
@@ -57,7 +67,7 @@ local function GetRarityDetails(typeText)
     return nil, "", false
 end
 
--- Main function to scan the shop
+-- Main Shop Scanner
 local function ScanShopAndNotify()
     local mafiaUI = LOCAL_PLAYER.PlayerGui:FindFirstChild("MafiaWarsUI")
     if not mafiaUI then return end
@@ -73,7 +83,6 @@ local function ScanShopAndNotify()
     local currentlyVisible = {}
 
     for _, itemFrame in ipairs(cashScroller:GetChildren()) do
-        -- Checks for valid shop items that are currently visible
         if itemFrame:IsA("GuiObject") and string.match(itemFrame.Name, "^Shop_") and itemFrame.Visible then
             currentlyVisible[itemFrame.Name] = true
 
@@ -84,7 +93,6 @@ local function ScanShopAndNotify()
             local color, rarityName, isTargetRarity = GetRarityDetails(cleanedType)
 
             if isTargetRarity then
-                -- Only send if we haven't already alerted for this specific frame in this rotation
                 if not notifiedItems[itemFrame.Name] then
                     local priceLabel = itemFrame:FindFirstChild("PriceText", true)
                     local statLabel = itemFrame:FindFirstChild("StatText", true)
@@ -94,11 +102,23 @@ local function ScanShopAndNotify()
                     local statText = statLabel and CleanText(statLabel.Text) or "None"
                     local itemName = nameLabel and CleanText(nameLabel.Text) or itemFrame.Name
 
-                    -- Icon extraction
-                    local iconPlate = itemFrame:FindFirstChild("IconPlate", true)
-                    local itemIcon = iconPlate and iconPlate:FindFirstChild("ItemIcon", true)
-                    local rawImageId = itemIcon and itemIcon.Image or ""
-                    local imageUrl = FetchImageUrl(rawImageId)
+                    -- Extract image ID across ImageLabel and ViewportFrame containers
+                    local rawImageId = ""
+                    local iconPlate = itemFrame:FindFirstChild("IconPlate", true) or itemFrame:FindFirstChild("Icon", true)
+                    
+                    if iconPlate then
+                        local itemIcon = iconPlate:FindFirstChild("ItemIcon", true) or iconPlate:FindFirstChildOfClass("ImageLabel")
+                        if itemIcon then
+                            rawImageId = itemIcon.Image
+                        end
+                    else
+                        local imgObj = itemFrame:FindFirstChildOfClass("ImageLabel", true)
+                        if imgObj then
+                            rawImageId = imgObj.Image
+                        end
+                    end
+
+                    local imageUrl = GetGuaranteedImageUrl(rawImageId)
 
                     local embedData = {
                         ["title"] = "🔥 " .. itemName,
@@ -109,13 +129,10 @@ local function ScanShopAndNotify()
                             { ["name"] = "⚔️ Stats", ["value"] = statText, ["inline"] = false },
                             { ["name"] = "📦 Type", ["value"] = string.upper(cleanedType), ["inline"] = false }
                         },
+                        ["thumbnail"] = { ["url"] = imageUrl },
                         ["footer"] = { ["text"] = "Mafia Wars High-Rarity Tracker" },
                         ["timestamp"] = DateTime.now():ToIsoDate()
                     }
-
-                    if imageUrl then
-                        embedData["thumbnail"] = { ["url"] = imageUrl }
-                    end
 
                     local payloadData = {
                         ["username"] = "Shop Tracker",
@@ -126,9 +143,10 @@ local function ScanShopAndNotify()
                         payloadData["content"] = DISCORD_ROLE_OR_USER_PING
                     end
 
+                    -- Send request via Proxy URL
                     pcall(function()
                         httpRequest({
-                            Url = WEBHOOK_URL,
+                            Url = FINAL_WEBHOOK_URL,
                             Method = "POST",
                             Headers = { ["Content-Type"] = "application/json" },
                             Body = HttpService:JSONEncode(payloadData)
@@ -136,13 +154,13 @@ local function ScanShopAndNotify()
                     end)
 
                     notifiedItems[itemFrame.Name] = true
-                    task.wait(0.5) -- Avoid Discord rate limits
+                    task.wait(0.5) -- Avoid Discord rate limiting
                 end
             end
         end
     end
 
-    -- Automatically clear items from memory when they disappear from the shop
+    -- Reset cache for items that cycle out
     for cachedName, _ in pairs(notifiedItems) do
         if not currentlyVisible[cachedName] then
             notifiedItems[cachedName] = nil
@@ -150,9 +168,9 @@ local function ScanShopAndNotify()
     end
 end
 
--- Start continuous background thread
+-- Continuous background loop
 task.spawn(function()
-    print("[Shop Monitor] Auto-tracker initialized! Monitoring every " .. SCAN_INTERVAL .. " seconds...")
+    print("[Proxy Shop Tracker] Initialized! Target Proxy: " .. PROXY_DOMAIN)
     while true do
         pcall(ScanShopAndNotify)
         task.wait(SCAN_INTERVAL)
