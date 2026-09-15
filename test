@@ -8,6 +8,7 @@ local SCAN_INTERVAL = 2 -- How often to check the shop (in seconds)
 
 local COLOR_CYAN = 65535         -- Cyan (#00FFFF) for Secret
 local COLOR_PINK_RED = 13323087   -- Dark Pinkish-Red (#CB2C4F) for Mythic
+local COLOR_CRIMSON = 15728640    -- Crimson Red (#EF0100) for Forbidden
 -- =================================================
 
 local LOCAL_PLAYER = Players.LocalPlayer
@@ -26,7 +27,7 @@ end
 -- Converts any asset ID / rbxassetid string directly into a clean Discord-compatible image URL
 local function FetchImageUrl(rawImageId)
     if not rawImageId or rawImageId == "" then return nil end
-    local assetId = string.match(rawImageId, "%d+")
+    local assetId = string.match(tostring(rawImageId), "%d+")
     if not assetId then return nil end
 
     -- Direct CDN delivery URL (Bypasses API JSON parsing and state checks)
@@ -36,7 +37,9 @@ end
 -- Checks rarity type and returns matching embed color, raw rarity string, and alert status
 local function GetRarityDetails(typeText)
     local upperText = string.upper(typeText)
-    if string.find(upperText, "SECRET") then
+    if string.find(upperText, "FORBIDDEN") then
+        return COLOR_CRIMSON, "FORBIDDEN", true
+    elseif string.find(upperText, "SECRET") then
         return COLOR_CYAN, "SECRET", true
     elseif string.find(upperText, "MYTHIC") then
         return COLOR_PINK_RED, "MYTHIC", true
