@@ -117,3 +117,4 @@ task.spawn(function()
         task.wait(10) -- Repeats every 10 seconds
     end
 end)
+print('loaded')
