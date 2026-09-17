@@ -1,0 +1,119 @@
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local LOCAL_PLAYER = Players.LocalPlayer
+local DO_JOB_REMOTE = ReplicatedStorage:WaitForChild("MW"):WaitForChild("Remotes"):WaitForChild("DoJob")
+
+local UI_ROOT = LOCAL_PLAYER:WaitForChild("PlayerGui")
+    :WaitForChild("MafiaWarsUI")
+    :WaitForChild("Root")
+
+local LEVEL_CAPTION = UI_ROOT:WaitForChild("TopBar")
+    :WaitForChild("AvatarCard")
+    :WaitForChild("AvatarCluster")
+    :WaitForChild("NameCol")
+    :WaitForChild("LevelRow")
+    :WaitForChild("LevelCaption")
+
+local JOBS_SCROLLER = UI_ROOT:WaitForChild("Content")
+    :WaitForChild("JobsPanel")
+    :WaitForChild("Scroller")
+
+-- Helper function to extract current player level from "LEVEL 123"
+local function GetPlayerLevel()
+    local text = LEVEL_CAPTION.Text
+    local levelNum = string.match(text, "%d+")
+    return tonumber(levelNum) or 0
+end
+
+-- Helper function to extract lock level requirement from "Level 94"
+local function GetLockLevel(card)
+    local lockLabel = card:FindFirstChild("LockLabel")
+    if not lockLabel or not lockLabel.Visible then 
+        return 0 -- If LockLabel isn't visible/doesn't exist, assume unlocked
+    end
+    
+    local levelNum = string.match(lockLabel.Text, "%d+")
+    return tonumber(levelNum) or 0
+end
+
+-- Helper function to check if the job mastery is maxed out
+local function IsMasteryMaxed(card)
+    local masteryBar = card:FindFirstChild("MasteryBar")
+    local masteryText = masteryBar and masteryBar:FindFirstChild("MasteryText")
+    
+    if masteryText then
+        local text = string.upper(masteryText.Text)
+        if string.find(text, "GOLD MASTERY") then
+            return true
+        end
+    end
+    return false
+end
+
+-- Helper function to extract energy cost from BadgeEnergy.Value text
+local function GetEnergyCost(card)
+    local subRow = card:FindFirstChild("SubRow")
+    local badgeEnergy = subRow and subRow:FindFirstChild("BadgeEnergy")
+    local valueLabel = badgeEnergy and badgeEnergy:FindFirstChild("Value")
+    
+    if valueLabel then
+        local energyNum = string.match(valueLabel.Text, "%d+")
+        return tonumber(energyNum) or 999999
+    end
+    return 999999
+end
+
+-- Main function to evaluate and find the optimal job
+local function FindBestJob()
+    local myLevel = GetPlayerLevel()
+    local bestJobName = nil
+    local lowestEnergy = math.huge
+
+    for _, card in ipairs(JOBS_SCROLLER:GetChildren()) do
+        -- Ensure it's a job card starting with "Card_"
+        if card:IsA("GuiObject") and string.sub(card.Name, 1, 5) == "Card_" then
+            
+            local isMaxed = IsMasteryMaxed(card)
+            local lockLevel = GetLockLevel(card)
+            
+            -- Eligibility Check: Level requirement met & NOT maxed out
+            if myLevel >= lockLevel and not isMaxed then
+                local energyCost = GetEnergyCost(card)
+                
+                -- Select the job with the absolute lowest energy requirement
+                if energyCost < lowestEnergy then
+                    lowestEnergy = energyCost
+                    -- Strip "Card_" from card.Name to get pure job identifier (e.g. "j_floatingpalace")
+                    bestJobName = string.sub(card.Name, 6)
+                end
+            end
+        end
+    end
+
+    return bestJobName, lowestEnergy
+end
+
+-- Continuous Automation Loop
+task.spawn(function()
+    print("[Job Auto-Farmer] Script loaded and running...")
+    
+    while true do
+        local success, err = pcall(function()
+            local targetJob, energy = FindBestJob()
+            
+            if targetJob then
+                print(string.format("[Job Auto-Farmer] Executing %s (Energy Cost: %d)", targetJob, energy))
+                DO_JOB_REMOTE:InvokeServer(targetJob)
+            else
+                print("[Job Auto-Farmer] No valid unmaxed jobs found for current level!")
+            end
+        end)
+        
+        if not success then
+            warn("[Job Auto-Farmer] Error encountered: " .. tostring(err))
+        end
+        
+        task.wait(10) -- Repeats every 10 seconds
+    end
+end)
