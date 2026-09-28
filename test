@@ -3,7 +3,7 @@ local Players = game:GetService("Players")
 
 -- ================= CONFIGURATION =================
 local WEBHOOK_URL = "https://discord.com/api/webhooks/1549560381993779281/LlWPSWdoMdrpvbdFr6ry0pXSORodrTIZswPLazcArdYa4te70dExlkdlYeM4gjsPYyJe"
-local DISCORD_ROLE_PING = "<@&1547918279727652884>" -- Correct role ping format (<@&ROLE_ID>)
+local DISCORD_ROLE_PING = "<@&1547918279727652884>" -- Cleaned mention string
 local SCAN_INTERVAL = 2 -- How often to check the shop (in seconds)
 
 local COLOR_CYAN = 65535         -- Cyan (#00FFFF) for Secret
@@ -30,7 +30,6 @@ local function FetchImageUrl(rawImageId)
     local assetId = string.match(tostring(rawImageId), "%d+")
     if not assetId then return nil end
 
-    -- Direct CDN delivery URL (Bypasses API JSON parsing and state checks)
     return "https://www.roblox.com/asset-thumbnail/image?assetId=" .. assetId .. "&width=420&height=420&format=png"
 end
 
