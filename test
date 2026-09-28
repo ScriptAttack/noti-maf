@@ -3,7 +3,7 @@ local Players = game:GetService("Players")
 
 -- ================= CONFIGURATION =================
 local WEBHOOK_URL = "https://discord.com/api/webhooks/1549560381993779281/LlWPSWdoMdrpvbdFr6ry0pXSORodrTIZswPLazcArdYa4te70dExlkdlYeM4gjsPYyJe"
-local DISCORD_ROLE_PING = "<@&1547918279727652884>" -- Cleaned mention string
+local DISCORD_ROLE_PING = "<@&1547918279727652884>"
 local SCAN_INTERVAL = 2 -- How often to check the shop (in seconds)
 
 local COLOR_CYAN = 65535         -- Cyan (#00FFFF) for Secret
@@ -33,7 +33,7 @@ local function FetchImageUrl(rawImageId)
     return "https://www.roblox.com/asset-thumbnail/image?assetId=" .. assetId .. "&width=420&height=420&format=png"
 end
 
--- Checks rarity type and returns matching embed color, raw rarity string, alert status, and shouldPing flag
+-- Checks rarity type and returns matching embed color, raw rarity string, alert status, and default shouldPing flag
 local function GetRarityDetails(typeText)
     local upperText = string.upper(typeText)
     if string.find(upperText, "FORBIDDEN") then
@@ -44,6 +44,12 @@ local function GetRarityDetails(typeText)
         return COLOR_PINK_RED, "MYTHIC", true, true   -- Alert, YES Ping
     end
     return nil, "", false, false
+end
+
+-- Checks if a price string indicates a Gold Bar currency item
+local function IsGoldItem(priceText)
+    local upperPrice = string.upper(priceText)
+    return string.find(upperPrice, "GOLD") ~= nil or string.find(upperPrice, "BAR") ~= nil
 end
 
 -- Main function to scan the shop
@@ -81,6 +87,11 @@ local function ScanShopAndNotify()
                     local statText = statLabel and CleanText(statLabel.Text) or "None"
                     local itemName = nameLabel and CleanText(nameLabel.Text) or itemFrame.Name
 
+                    -- If the item costs Gold, suppress the role ping
+                    if IsGoldItem(priceText) then
+                        shouldPing = false
+                    end
+
                     -- Icon extraction
                     local iconPlate = itemFrame:FindFirstChild("IconPlate", true)
                     local itemIcon = iconPlate and (iconPlate:FindFirstChild("ItemIcon", true) or iconPlate:FindFirstChildOfClass("ImageLabel"))
@@ -109,7 +120,7 @@ local function ScanShopAndNotify()
                         ["embeds"] = { embedData }
                     }
 
-                    -- Attach role ping if the item is SECRET or MYTHIC
+                    -- Attach role ping ONLY if it's a non-Gold Secret/Mythic item
                     if shouldPing and DISCORD_ROLE_PING ~= "" then
                         payloadData["content"] = DISCORD_ROLE_PING
                     end
