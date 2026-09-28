@@ -3,7 +3,7 @@ local Players = game:GetService("Players")
 
 -- ================= CONFIGURATION =================
 local WEBHOOK_URL = "https://discord.com/api/webhooks/1549560381993779281/LlWPSWdoMdrpvbdFr6ry0pXSORodrTIZswPLazcArdYa4te70dExlkdlYeM4gjsPYyJe"
-local DISCORD_ROLE_OR_USER_PING = "<@1547918279727652884>" -- Add ping like "<@&ROLE_ID>" or "@everyone"
+local DISCORD_ROLE_OR_USER_PING = "<@1547918279727652884>" -- Only triggered when SECRET items appear
 local SCAN_INTERVAL = 2 -- How often to check the shop (in seconds)
 
 local COLOR_CYAN = 65535         -- Cyan (#00FFFF) for Secret
@@ -34,17 +34,17 @@ local function FetchImageUrl(rawImageId)
     return "https://www.roblox.com/asset-thumbnail/image?assetId=" .. assetId .. "&width=420&height=420&format=png"
 end
 
--- Checks rarity type and returns matching embed color, raw rarity string, and alert status
+-- Checks rarity type and returns matching embed color, raw rarity string, alert status, and shouldPing flag
 local function GetRarityDetails(typeText)
     local upperText = string.upper(typeText)
     if string.find(upperText, "FORBIDDEN") then
-        return COLOR_CRIMSON, "FORBIDDEN", true
+        return COLOR_CRIMSON, "FORBIDDEN", true, false -- Alert, No Ping
     elseif string.find(upperText, "SECRET") then
-        return COLOR_CYAN, "SECRET", true
+        return COLOR_CYAN, "SECRET", true, true       -- Alert, YES Ping
     elseif string.find(upperText, "MYTHIC") then
-        return COLOR_PINK_RED, "MYTHIC", true
+        return COLOR_PINK_RED, "MYTHIC", true, false  -- Alert, No Ping
     end
-    return nil, "", false
+    return nil, "", false, false
 end
 
 -- Main function to scan the shop
@@ -70,7 +70,7 @@ local function ScanShopAndNotify()
             local rawTypeText = typeLabel and typeLabel.Text or ""
             local cleanedType = CleanText(rawTypeText)
 
-            local color, rarityName, isTargetRarity = GetRarityDetails(cleanedType)
+            local color, rarityName, isTargetRarity, shouldPing = GetRarityDetails(cleanedType)
 
             if isTargetRarity then
                 if not notifiedItems[itemFrame.Name] then
@@ -97,7 +97,7 @@ local function ScanShopAndNotify()
                             { ["name"] = "⚔️ Stats", ["value"] = statText, ["inline"] = false },
                             { ["name"] = "📦 Type", ["value"] = string.upper(cleanedType), ["inline"] = false }
                         },
-                        ["footer"] = { ["text"] = "Mafia Wars High-Rarity Tracker" },
+                        ["footer"] = { ["text"] = "Dusk - Shop Alerts" },
                         ["timestamp"] = DateTime.now():ToIsoDate()
                     }
 
@@ -106,11 +106,12 @@ local function ScanShopAndNotify()
                     end
 
                     local payloadData = {
-                        ["username"] = "Shop Tracker",
+                        ["username"] = "Dusk - Shop Alerts",
                         ["embeds"] = { embedData }
                     }
 
-                    if DISCORD_ROLE_OR_USER_PING ~= "" then
+                    -- Attach ping only if the item is SECRET
+                    if shouldPing and DISCORD_ROLE_OR_USER_PING ~= "" then
                         payloadData["content"] = DISCORD_ROLE_OR_USER_PING
                     end
 
@@ -140,7 +141,7 @@ end
 
 -- Continuous background thread
 task.spawn(function()
-    print("[Shop Monitor] Active! Watching CashScroller...")
+    print("[Dusk - Shop Alerts] Active! Watching CashScroller...")
     while true do
         pcall(ScanShopAndNotify)
         task.wait(SCAN_INTERVAL)
