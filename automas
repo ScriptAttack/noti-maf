@@ -1,0 +1,213 @@
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+-- TOGGLE: 
+-- true  = Farm mastery (lowest energy cost, unlocked, non-maxed jobs)
+-- false = High Energy Mode (highest energy cost <= Energy Cap, unlocked jobs)
+local FARM_MASTERY = true
+
+-- Target cash to keep on hand (1 Billion = 1,000,000,000)
+local CASH_TO_KEEP = 150000000
+
+local LOCAL_PLAYER = Players.LocalPlayer
+local DO_JOB_REMOTE = ReplicatedStorage:WaitForChild("MW"):WaitForChild("Remotes"):WaitForChild("DoJob")
+local DEPOSIT_REMOTE = ReplicatedStorage:WaitForChild("MW"):WaitForChild("Remotes"):WaitForChild("Deposit")
+local FAMILY_REMOTE = ReplicatedStorage:WaitForChild("MW"):WaitForChild("Remotes"):WaitForChild("FamilyAction")
+
+local UI_ROOT = LOCAL_PLAYER:WaitForChild("PlayerGui")
+    :WaitForChild("MafiaWarsUI")
+    :WaitForChild("Root")
+
+local LEVEL_TEXT_LABEL = UI_ROOT:WaitForChild("TopBar")
+    :WaitForChild("AvatarCard")
+    :WaitForChild("AvatarCluster")
+    :WaitForChild("AvatarFrame")
+    :WaitForChild("LevelBadge")
+    :WaitForChild("Text")
+
+local CASH_VALUE_LABEL = UI_ROOT:WaitForChild("TopBar")
+    :WaitForChild("CashCluster")
+    :WaitForChild("CashValue")
+
+local STAMINA_VALUE_LABEL = UI_ROOT:WaitForChild("TopBar")
+    :WaitForChild("BarsCluster")
+    :WaitForChild("StaminaBar")
+    :WaitForChild("Value")
+
+local ENERGY_VALUE_LABEL = UI_ROOT:WaitForChild("TopBar")
+    :WaitForChild("BarsCluster")
+    :WaitForChild("EnergyBar")
+    :WaitForChild("Value")
+
+local JOBS_SCROLLER = UI_ROOT:WaitForChild("Content")
+    :WaitForChild("JobsPanel")
+    :WaitForChild("Scroller")
+
+-- Specific Cash Parser for "$411M", "$1.2B", "$500K", etc.
+local function GetOnHandCash()
+    local text = CASH_VALUE_LABEL.Text
+    local cleanText = string.gsub(text, "[$,%s]", "") -- Strip $, commas, spaces
+    
+    -- Match number part and optional suffix (e.g. "411" and "M")
+    local numStr, suffix = string.match(cleanText, "([%d%.]+)(%a?)")
+    local num = tonumber(numStr) or 0
+    suffix = string.upper(suffix or "")
+
+    if suffix == "K" then
+        return num * 1e3
+    elseif suffix == "M" then
+        return num * 1e6
+    elseif suffix == "B" then
+        return num * 1e9
+    elseif suffix == "T" then
+        return num * 1e12
+    elseif suffix == "QA" or suffix == "Q" then
+        return num * 1e15
+    end
+
+    return num
+end
+
+local function GetPlayerLevel()
+    local text = LEVEL_TEXT_LABEL.Text
+    local levelNum = string.match(text, "%d+")
+    return tonumber(levelNum) or 0
+end
+
+local function GetStaminaValues()
+    local text = STAMINA_VALUE_LABEL.Text
+    local current, cap = string.match(text, "(%d+)%s*/%s*(%d+)")
+    return tonumber(current) or 0, tonumber(cap) or 0
+end
+
+local function GetEnergyValues()
+    local text = ENERGY_VALUE_LABEL.Text
+    local current, cap = string.match(text, "(%d+)%s*/%s*(%d+)")
+    return tonumber(current) or 0, tonumber(cap) or 0
+end
+
+local function GetLockLevel(card)
+    local lockLabel = card:FindFirstChild("LockLabel")
+    if not lockLabel or not lockLabel.Visible then 
+        return 0 
+    end
+
+    local levelNum = string.match(lockLabel.Text, "%d+")
+    return tonumber(levelNum) or 0
+end
+
+local function IsMasteryMaxed(card)
+    local masteryBar = card:FindFirstChild("MasteryBar")
+    if masteryBar then
+        local masteryText = masteryBar:FindFirstChild("MasteryText")
+        if masteryText and masteryText:IsA("TextLabel") then
+            local text = string.upper(masteryText.Text)
+            if string.find(text, "GOLD") or string.find(text, "15%%") or string.find(text, "MAX") or string.find(text, "100%%") then
+                return true
+            end
+        end
+    end
+    return false
+end
+
+local function GetEnergyCost(card)
+    local subRow = card:FindFirstChild("SubRow")
+    local badgeEnergy = subRow and subRow:FindFirstChild("BadgeEnergy")
+    local valueLabel = badgeEnergy and badgeEnergy:FindFirstChild("Value")
+
+    if valueLabel and valueLabel:IsA("TextLabel") then
+        local energyNum = string.match(valueLabel.Text, "%d+")
+        return tonumber(energyNum)
+    end
+    return nil
+end
+
+local function ExtractJobId(cardName)
+    if string.sub(cardName, 1, 5) == "Card_" then
+        return string.sub(cardName, 6)
+    end
+    return nil
+end
+
+local function FindBestJob()
+    local myLevel = GetPlayerLevel()
+    local bestJobName = nil
+
+    if FARM_MASTERY then
+        local lowestEnergy = math.huge
+
+        for _, card in ipairs(JOBS_SCROLLER:GetChildren()) do
+            local jobId = ExtractJobId(card.Name)
+            if jobId then
+                local isMaxed = IsMasteryMaxed(card)
+                local lockLevel = GetLockLevel(card)
+                local energyCost = GetEnergyCost(card)
+
+                if myLevel >= lockLevel and not isMaxed then
+                    if energyCost and energyCost < lowestEnergy then
+                        lowestEnergy = energyCost
+                        bestJobName = jobId
+                    end
+                end
+            end
+        end
+    else
+        local _, energyCap = GetEnergyValues()
+        local highestValidEnergy = -1
+
+        for _, card in ipairs(JOBS_SCROLLER:GetChildren()) do
+            local jobId = ExtractJobId(card.Name)
+            if jobId then
+                local lockLevel = GetLockLevel(card)
+
+                if myLevel >= lockLevel then
+                    local energyCost = GetEnergyCost(card)
+                    
+                    if energyCost and energyCost <= energyCap and energyCost > highestValidEnergy then
+                        highestValidEnergy = energyCost
+                        bestJobName = jobId
+                    end
+                end
+            end
+        end
+    end
+
+    return bestJobName
+end
+
+-- Continuous Automation Loop
+task.spawn(function()
+    while true do
+        -- 1. Deposit Cash (Only if cash on hand exceeds 1B)
+        pcall(function()
+            local currentCash = GetOnHandCash()
+
+            if currentCash > CASH_TO_KEEP then
+                local depositAmount = currentCash - CASH_TO_KEEP
+                DEPOSIT_REMOTE:InvokeServer(depositAmount)
+            end
+        end)
+
+        -- 2. Drain Stamina if Current >= (Cap - 3)
+        local currentStamina, maxStamina = GetStaminaValues()
+        while maxStamina > 0 and currentStamina >= (maxStamina - 3) do
+            pcall(function()
+                FAMILY_REMOTE:InvokeServer("contribute", "medics", 1, nil)
+            end)
+
+            task.wait(5)
+            currentStamina, maxStamina = GetStaminaValues()
+        end
+
+        -- 3. Execute Job Logic
+        pcall(function()
+            local targetJob = FindBestJob()
+
+            if targetJob then
+                DO_JOB_REMOTE:InvokeServer(targetJob)
+            end
+        end)
+
+        task.wait(5)
+    end
+end)
