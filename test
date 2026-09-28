@@ -3,7 +3,7 @@ local Players = game:GetService("Players")
 
 -- ================= CONFIGURATION =================
 local WEBHOOK_URL = "https://discord.com/api/webhooks/1549560381993779281/LlWPSWdoMdrpvbdFr6ry0pXSORodrTIZswPLazcArdYa4te70dExlkdlYeM4gjsPYyJe"
-local DISCORD_ROLE_OR_USER_PING = "<@1547918279727652884>" -- Only triggered when SECRET items appear
+local DISCORD_ROLE_PING = "<@&1547918279727652884>" -- Correct role ping format (<@&ROLE_ID>)
 local SCAN_INTERVAL = 2 -- How often to check the shop (in seconds)
 
 local COLOR_CYAN = 65535         -- Cyan (#00FFFF) for Secret
@@ -42,7 +42,7 @@ local function GetRarityDetails(typeText)
     elseif string.find(upperText, "SECRET") then
         return COLOR_CYAN, "SECRET", true, true       -- Alert, YES Ping
     elseif string.find(upperText, "MYTHIC") then
-        return COLOR_PINK_RED, "MYTHIC", true, false  -- Alert, No Ping
+        return COLOR_PINK_RED, "MYTHIC", true, true   -- Alert, YES Ping
     end
     return nil, "", false, false
 end
@@ -110,9 +110,9 @@ local function ScanShopAndNotify()
                         ["embeds"] = { embedData }
                     }
 
-                    -- Attach ping only if the item is SECRET
-                    if shouldPing and DISCORD_ROLE_OR_USER_PING ~= "" then
-                        payloadData["content"] = DISCORD_ROLE_OR_USER_PING
+                    -- Attach role ping if the item is SECRET or MYTHIC
+                    if shouldPing and DISCORD_ROLE_PING ~= "" then
+                        payloadData["content"] = DISCORD_ROLE_PING
                     end
 
                     pcall(function()
