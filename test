@@ -46,10 +46,25 @@ local function GetRarityDetails(typeText)
     return nil, "", false, false
 end
 
--- Checks if a price string indicates a Gold Bar currency item
-local function IsGoldItem(priceText)
-    local upperPrice = string.upper(priceText)
-    return string.find(upperPrice, "GOLD") ~= nil or string.find(upperPrice, "BAR") ~= nil
+-- Checks if an item frame or price string indicates a Gold Bar currency item
+local function IsGoldItem(itemFrame, rawPriceText)
+    -- Check raw price text
+    local upperRaw = string.upper(rawPriceText or "")
+    if string.find(upperRaw, "GOLD") or string.find(upperRaw, "BAR") then
+        return true
+    end
+
+    -- Deep scan all descendants inside itemFrame for any text containing GOLD or BAR
+    for _, desc in ipairs(itemFrame:GetDescendants()) do
+        if desc:IsA("TextLabel") or desc:IsA("TextButton") then
+            local txt = string.upper(desc.Text or "")
+            if string.find(txt, "GOLD") or string.find(txt, "BAR") then
+                return true
+            end
+        end
+    end
+
+    return false
 end
 
 -- Main function to scan the shop
@@ -83,12 +98,15 @@ local function ScanShopAndNotify()
                     local statLabel = itemFrame:FindFirstChild("StatText", true)
                     local nameLabel = itemFrame:FindFirstChild("ItemName", true)
 
-                    local priceText = priceLabel and CleanText(priceLabel.Text) or "N/A"
+                    local rawPriceText = priceLabel and priceLabel.Text or ""
+                    local priceText = CleanText(rawPriceText)
+                    if priceText == "" then priceText = "N/A" end
+
                     local statText = statLabel and CleanText(statLabel.Text) or "None"
                     local itemName = nameLabel and CleanText(nameLabel.Text) or itemFrame.Name
 
-                    -- If the item costs Gold, suppress the role ping
-                    if IsGoldItem(priceText) then
+                    -- Check if item requires Gold Bars (disables ping if true)
+                    if IsGoldItem(itemFrame, rawPriceText) then
                         shouldPing = false
                     end
 
@@ -120,7 +138,7 @@ local function ScanShopAndNotify()
                         ["embeds"] = { embedData }
                     }
 
-                    -- Attach role ping ONLY if it's a non-Gold Secret/Mythic item
+                    -- Attach role ping ONLY if it's a non-Gold item
                     if shouldPing and DISCORD_ROLE_PING ~= "" then
                         payloadData["content"] = DISCORD_ROLE_PING
                     end
