@@ -95,65 +95,65 @@ local function ScanShopAndNotify()
             if isTargetRarity then
                 if not notifiedItems[itemFrame.Name] then
                     local priceLabel = itemFrame:FindFirstChild("PriceText", true)
-                    local statLabel = itemFrame:FindFirstChild("StatText", true)
-                    local nameLabel = itemFrame:FindFirstChild("ItemName", true)
-
                     local rawPriceText = priceLabel and priceLabel.Text or ""
-                    local priceText = CleanText(rawPriceText)
-                    if priceText == "" then priceText = "N/A" end
 
-                    local statText = statLabel and CleanText(statLabel.Text) or "None"
-                    local itemName = nameLabel and CleanText(nameLabel.Text) or itemFrame.Name
-
-                    -- Check if item requires Gold Bars (disables ping if true)
+                    -- SILENT FILTER: Completely skip notification if it costs Gold / Gold Bars
                     if IsGoldItem(itemFrame, rawPriceText) then
-                        shouldPing = false
+                        notifiedItems[itemFrame.Name] = true
+                    else
+                        local statLabel = itemFrame:FindFirstChild("StatText", true)
+                        local nameLabel = itemFrame:FindFirstChild("ItemName", true)
+
+                        local priceText = CleanText(rawPriceText)
+                        if priceText == "" then priceText = "N/A" end
+
+                        local statText = statLabel and CleanText(statLabel.Text) or "None"
+                        local itemName = nameLabel and CleanText(nameLabel.Text) or itemFrame.Name
+
+                        -- Icon extraction
+                        local iconPlate = itemFrame:FindFirstChild("IconPlate", true)
+                        local itemIcon = iconPlate and (iconPlate:FindFirstChild("ItemIcon", true) or iconPlate:FindFirstChildOfClass("ImageLabel"))
+                        local rawImageId = itemIcon and itemIcon.Image or ""
+                        local imageUrl = FetchImageUrl(rawImageId)
+
+                        local embedData = {
+                            ["title"] = "🔥 " .. itemName,
+                            ["color"] = color,
+                            ["fields"] = {
+                                { ["name"] = "✨ Rarity", ["value"] = rarityName, ["inline"] = true },
+                                { ["name"] = "💰 Price", ["value"] = priceText, ["inline"] = true },
+                                { ["name"] = "⚔️ Stats", ["value"] = statText, ["inline"] = false },
+                                { ["name"] = "📦 Type", ["value"] = string.upper(cleanedType), ["inline"] = false }
+                            },
+                            ["footer"] = { ["text"] = "Dusk - Shop Alerts" },
+                            ["timestamp"] = DateTime.now():ToIsoDate()
+                        }
+
+                        if imageUrl then
+                            embedData["thumbnail"] = { ["url"] = imageUrl }
+                        end
+
+                        local payloadData = {
+                            ["username"] = "Dusk - Shop Alerts",
+                            ["embeds"] = { embedData }
+                        }
+
+                        if shouldPing and DISCORD_ROLE_PING ~= "" then
+                            payloadData["content"] = DISCORD_ROLE_PING
+                        end
+
+                        pcall(function()
+                            httpRequest({
+                                Url = WEBHOOK_URL,
+                                Method = "POST",
+                                Headers = { ["Content-Type"] = "application/json" },
+                                Body = HttpService:JSONEncode(payloadData)
+                            })
+                        end)
+
+                        notifiedItems[itemFrame.Name] = true
+                        task.wait(0.5) -- Avoid Discord rate limits
                     end
-
-                    -- Icon extraction
-                    local iconPlate = itemFrame:FindFirstChild("IconPlate", true)
-                    local itemIcon = iconPlate and (iconPlate:FindFirstChild("ItemIcon", true) or iconPlate:FindFirstChildOfClass("ImageLabel"))
-                    local rawImageId = itemIcon and itemIcon.Image or ""
-                    local imageUrl = FetchImageUrl(rawImageId)
-
-                    local embedData = {
-                        ["title"] = "🔥 " .. itemName,
-                        ["color"] = color,
-                        ["fields"] = {
-                            { ["name"] = "✨ Rarity", ["value"] = rarityName, ["inline"] = true },
-                            { ["name"] = "💰 Price", ["value"] = priceText, ["inline"] = true },
-                            { ["name"] = "⚔️ Stats", ["value"] = statText, ["inline"] = false },
-                            { ["name"] = "📦 Type", ["value"] = string.upper(cleanedType), ["inline"] = false }
-                        },
-                        ["footer"] = { ["text"] = "Dusk - Shop Alerts" },
-                        ["timestamp"] = DateTime.now():ToIsoDate()
-                    }
-
-                    if imageUrl then
-                        embedData["thumbnail"] = { ["url"] = imageUrl }
-                    end
-
-                    local payloadData = {
-                        ["username"] = "Dusk - Shop Alerts",
-                        ["embeds"] = { embedData }
-                    }
-
-                    -- Attach role ping ONLY if it's a non-Gold item
-                    if shouldPing and DISCORD_ROLE_PING ~= "" then
-                        payloadData["content"] = DISCORD_ROLE_PING
-                    end
-
-                    pcall(function()
-                        httpRequest({
-                            Url = WEBHOOK_URL,
-                            Method = "POST",
-                            Headers = { ["Content-Type"] = "application/json" },
-                            Body = HttpService:JSONEncode(payloadData)
-                        })
-                    end)
-
-                    notifiedItems[itemFrame.Name] = true
-                    task.wait(0.5) -- Avoid Discord rate limits
                 end
             end
         end
