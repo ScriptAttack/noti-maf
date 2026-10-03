@@ -3,7 +3,11 @@ local Players = game:GetService("Players")
 
 -- ================= CONFIGURATION =================
 local WEBHOOK_URL = "https://discord.com/api/webhooks/1549560381993779281/LlWPSWdoMdrpvbdFr6ry0pXSORodrTIZswPLazcArdYa4te70dExlkdlYeM4gjsPYyJe"
-local DISCORD_ROLE_PING = "<@&1547918279727652884>"
+
+-- Role Pings per Rarity
+local ROLE_PING_MYTHIC = "<@&1555969138285875220>"
+local ROLE_PING_SECRET = "<@&1555969464695132271>"
+
 local SCAN_INTERVAL = 2 -- How often to check the shop (in seconds)
 
 local COLOR_CYAN = 65535         -- Cyan (#00FFFF) for Secret
@@ -33,17 +37,17 @@ local function FetchImageUrl(rawImageId)
     return "https://www.roblox.com/asset-thumbnail/image?assetId=" .. assetId .. "&width=420&height=420&format=png"
 end
 
--- Checks rarity type and returns matching embed color, raw rarity string, alert status, and default shouldPing flag
+-- Checks rarity type and returns matching embed color, raw rarity string, alert status, and specific role ping
 local function GetRarityDetails(typeText)
     local upperText = string.upper(typeText)
     if string.find(upperText, "FORBIDDEN") then
-        return COLOR_CRIMSON, "FORBIDDEN", true, false -- Alert, No Ping
+        return COLOR_CRIMSON, "FORBIDDEN", true, nil              -- Alert, No Ping
     elseif string.find(upperText, "SECRET") then
-        return COLOR_CYAN, "SECRET", true, true       -- Alert, YES Ping
+        return COLOR_CYAN, "SECRET", true, ROLE_PING_SECRET       -- Alert, Secret Ping
     elseif string.find(upperText, "MYTHIC") then
-        return COLOR_PINK_RED, "MYTHIC", true, true   -- Alert, YES Ping
+        return COLOR_PINK_RED, "MYTHIC", true, ROLE_PING_MYTHIC   -- Alert, Mythic Ping
     end
-    return nil, "", false, false
+    return nil, "", false, nil
 end
 
 -- Checks if an item frame or price string indicates a Gold Bar currency item
@@ -90,7 +94,7 @@ local function ScanShopAndNotify()
             local rawTypeText = typeLabel and typeLabel.Text or ""
             local cleanedType = CleanText(rawTypeText)
 
-            local color, rarityName, isTargetRarity, shouldPing = GetRarityDetails(cleanedType)
+            local color, rarityName, isTargetRarity, rolePing = GetRarityDetails(cleanedType)
 
             if isTargetRarity then
                 if not notifiedItems[itemFrame.Name] then
@@ -138,8 +142,9 @@ local function ScanShopAndNotify()
                             ["embeds"] = { embedData }
                         }
 
-                        if shouldPing and DISCORD_ROLE_PING ~= "" then
-                            payloadData["content"] = DISCORD_ROLE_PING
+                        -- Attach the specific role ping if available
+                        if rolePing and rolePing ~= "" then
+                            payloadData["content"] = rolePing
                         end
 
                         pcall(function()
