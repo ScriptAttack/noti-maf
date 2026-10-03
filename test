@@ -5,8 +5,8 @@ local Players = game:GetService("Players")
 local WEBHOOK_URL = "https://discord.com/api/webhooks/1549560381993779281/LlWPSWdoMdrpvbdFr6ry0pXSORodrTIZswPLazcArdYa4te70dExlkdlYeM4gjsPYyJe"
 
 -- Role Pings per Rarity
-local ROLE_PING_MYTHIC = "<@&1555969138285875220>"
-local ROLE_PING_SECRET = "<@&1555969464695132271>"
+local ROLE_PING_MYTHIC = "<@&1547918279727652884>"
+local ROLE_PING_SECRET = "<@&1547918279727652884>"
 
 local SCAN_INTERVAL = 2 -- How often to check the shop (in seconds)
 
