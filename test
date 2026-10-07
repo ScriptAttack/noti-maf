@@ -7,6 +7,7 @@ local WEBHOOK_URL = "https://discord.com/api/webhooks/1549560381993779281/LlWPSW
 -- Role Pings per Rarity
 local ROLE_PING_MYTHIC = "<@&1555969138285875220>"
 local ROLE_PING_SECRET = "<@&1555969464695132271>"
+local ROLE_PING_SECRET_UNDER_1_5T = "<@&1557516387407241257>" -- Ping for Secret < 1.5T
 
 local SCAN_INTERVAL = 2 -- How often to check the shop (in seconds)
 
@@ -28,6 +29,31 @@ local function CleanText(rawText)
     return string.match(clean, "^%s*(.-)%s*$") or ""
 end
 
+-- Converts formatted currency strings (e.g. "$1.2T", "800B", "1.5 Trillion") to raw numbers
+local function ParsePriceToNumber(rawPriceText)
+    if not rawPriceText or rawPriceText == "" then return nil end
+    local upperText = string.upper(rawPriceText)
+    
+    -- Extract integer or decimal portion
+    local numString = string.match(upperText, "[%d%.]+")
+    if not numString then return nil end
+    local num = tonumber(numString)
+    if not num then return nil end
+
+    -- Check suffixes for scaling
+    if string.find(upperText, "T") or string.find(upperText, "TRILLION") then
+        return num * 1e12
+    elseif string.find(upperText, "B") or string.find(upperText, "BILLION") then
+        return num * 1e9
+    elseif string.find(upperText, "M") or string.find(upperText, "MILLION") then
+        return num * 1e6
+    elseif string.find(upperText, "K") or string.find(upperText, "THOUSAND") then
+        return num * 1e3
+    end
+
+    return num
+end
+
 -- Converts any asset ID / rbxassetid string directly into a clean Discord-compatible image URL
 local function FetchImageUrl(rawImageId)
     if not rawImageId or rawImageId == "" then return nil end
@@ -37,7 +63,7 @@ local function FetchImageUrl(rawImageId)
     return "https://www.roblox.com/asset-thumbnail/image?assetId=" .. assetId .. "&width=420&height=420&format=png"
 end
 
--- Checks rarity type and returns matching embed color, raw rarity string, alert status, and specific role ping
+-- Checks rarity type and returns matching embed color, raw rarity string, alert status, and default role ping
 local function GetRarityDetails(typeText)
     local upperText = string.upper(typeText)
     if string.find(upperText, "FORBIDDEN") then
@@ -52,13 +78,11 @@ end
 
 -- Checks if an item frame or price string indicates a Gold Bar currency item
 local function IsGoldItem(itemFrame, rawPriceText)
-    -- Check raw price text
     local upperRaw = string.upper(rawPriceText or "")
     if string.find(upperRaw, "GOLD") or string.find(upperRaw, "BAR") then
         return true
     end
 
-    -- Deep scan all descendants inside itemFrame for any text containing GOLD or BAR
     for _, desc in ipairs(itemFrame:GetDescendants()) do
         if desc:IsA("TextLabel") or desc:IsA("TextButton") then
             local txt = string.upper(desc.Text or "")
@@ -110,6 +134,12 @@ local function ScanShopAndNotify()
 
                         local priceText = CleanText(rawPriceText)
                         if priceText == "" then priceText = "N/A" end
+
+                        -- Parse raw numeric price to check against the 1.5T threshold
+                        local numericPrice = ParsePriceToNumber(priceText)
+                        if rarityName == "SECRET" and numericPrice and numericPrice < 1.5e12 then
+                            rolePing = ROLE_PING_SECRET_UNDER_1_5T
+                        end
 
                         local statText = statLabel and CleanText(statLabel.Text) or "None"
                         local itemName = nameLabel and CleanText(nameLabel.Text) or itemFrame.Name
