@@ -138,7 +138,8 @@ local function ScanShopAndNotify()
                         -- Parse raw numeric price to check against the 1.5T threshold
                         local numericPrice = ParsePriceToNumber(priceText)
                         if rarityName == "SECRET" and numericPrice and numericPrice < 1.5e12 then
-                            rolePing = ROLE_PING_SECRET_UNDER_1_5T
+                            -- Append the cheap secret ping alongside the main secret ping
+                            rolePing = ROLE_PING_SECRET .. " " .. ROLE_PING_SECRET_UNDER_1_5T
                         end
 
                         local statText = statLabel and CleanText(statLabel.Text) or "None"
@@ -172,7 +173,7 @@ local function ScanShopAndNotify()
                             ["embeds"] = { embedData }
                         }
 
-                        -- Attach the specific role ping if available
+                        -- Attach role pings if available
                         if rolePing and rolePing ~= "" then
                             payloadData["content"] = rolePing
                         end
