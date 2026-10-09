@@ -1,0 +1,113 @@
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local LocalPlayer = Players.LocalPlayer
+
+-- ================= CONFIGURATION =================
+local TARGET_ATTACK = 43       -- Target minimum Attack stat
+local TARGET_DEFENSE = 43      -- Target minimum Defense stat
+local MAX_CONCURRENT_ROLLS = 15 -- Max crew members auto-rolling simultaneously
+local POLL_INTERVAL = 2        -- Delay (seconds) between checking crew statuses
+-- =================================================
+
+local CrewRemote = ReplicatedStorage:WaitForChild("MW"):WaitForChild("Remotes"):WaitForChild("CrewAction")
+local CrewScroller = LocalPlayer:WaitForChild("PlayerGui")
+    :WaitForChild("MafiaWarsUI")
+    :WaitForChild("Root")
+    :WaitForChild("Content")
+    :WaitForChild("CrewPanel")
+    :WaitForChild("Scroller")
+
+-- Helper function to extract numbers from text strings (e.g., "+41 ATTACK" -> 41)
+local function parseStatNumber(text)
+    if not text then return 0 end
+    local num = string.match(text, "%d+")
+    return tonumber(num) or 0
+end
+
+-- Helper function to get a member frame's current stats and status
+local function getCrewData(memberFrame)
+    local atkLine = memberFrame:FindFirstChild("AtkLine")
+    local defLine = memberFrame:FindFirstChild("DefLine")
+    local statusLabel = memberFrame:FindFirstChild("StatusLabel")
+
+    local atkVal = parseStatNumber(atkLine and atkLine.Text)
+    local defVal = parseStatNumber(defLine and defLine.Text)
+    local statusText = statusLabel and statusLabel.Text or ""
+    
+    -- Clean text check for AUTO status
+    local isAutoRolling = string.find(string.upper(statusText), "AUTO") ~= nil
+
+    return atkVal, defVal, isAutoRolling, statusText
+end
+
+-- Triggers autoroll remote for a specific slot number
+local function startAutoRoll(slotNum)
+    task.spawn(function()
+        pcall(function()
+            CrewRemote:InvokeServer("ca01587a32b24eb1a0527e8e595e8483", "autoroll", slotNum, "professional", 7)
+        end)
+    end)
+end
+
+-- Main Automation Loop
+task.spawn(function()
+    print("[Crew AutoRoll] Script started! Target Atk: " .. TARGET_ATTACK .. " | Def: " .. TARGET_DEFENSE .. " | Max Rolls: " .. MAX_CONCURRENT_ROLLS)
+
+    while true do
+        local currentRollingCount = 0
+        local totalUnitsNeedingRoll = 0
+
+        -- Collect all valid crew slots
+        local crewMembers = {}
+        for _, child in ipairs(CrewScroller:GetChildren()) do
+            if string.sub(child.Name, 1, 7) == "Member_" then
+                local slotNum = tonumber(string.sub(child.Name, 8))
+                if slotNum then
+                    table.insert(crewMembers, { frame = child, slot = slotNum })
+                end
+            end
+        end
+
+        -- Sort sequentially by slot number
+        table.sort(crewMembers, function(a, b) return a.slot < b.slot end)
+
+        -- Pass 1: Count currently active autorolls
+        for _, crew in ipairs(crewMembers) do
+            local _, _, isRolling = getCrewData(crew.frame)
+            if isRolling then
+                currentRollingCount = currentRollingCount + 1
+            end
+        end
+
+        -- Pass 2: Check stats and trigger autoroll if slots available
+        for _, crew in ipairs(crewMembers) do
+            local atk, def, isRolling = getCrewData(crew.frame)
+
+            -- Changed to OR so units missing EITHER attack or defense will roll
+            local needsRoll = (atk < TARGET_ATTACK) or (def < TARGET_DEFENSE)
+
+            if needsRoll then
+                totalUnitsNeedingRoll = totalUnitsNeedingRoll + 1
+
+                if not isRolling then
+                    if currentRollingCount < MAX_CONCURRENT_ROLLS then
+                        print(string.format("[Crew AutoRoll] Starting Slot %d (Atk: %d, Def: %d) [Active: %d/%d]", 
+                            crew.slot, atk, def, currentRollingCount + 1, MAX_CONCURRENT_ROLLS))
+                        
+                        startAutoRoll(crew.slot)
+                        currentRollingCount = currentRollingCount + 1
+                        task.wait(0.2) -- Short delay to fire remotes sequentially
+                    end
+                end
+            end
+        end
+
+        -- Exit condition: All crew members meet the target criteria
+        if totalUnitsNeedingRoll == 0 and currentRollingCount == 0 then
+            print("[Crew AutoRoll] SUCCESS! All crew members meet or exceed target stats!")
+            break
+        end
+
+        task.wait(POLL_INTERVAL)
+    end
+end)
