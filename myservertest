@@ -3,6 +3,7 @@ local Players = game:GetService("Players")
 
 -- ================= CONFIGURATION =================
 local WEBHOOK_URL = "https://discord.com/api/webhooks/1549486969220890737/2RYHoKo77nt1lsbGnaddqJtqWgfbllssylfSsUzxNKdNyCyyvtsKIBHT4zUA5Mkx_d-s"
+local SAVE_FILE_NAME = "dusk_catalog_data.json"
 
 -- Role Pings per Rarity
 local ROLE_PING_MYTHIC = "<@&1555969138285875220>"
@@ -20,9 +21,9 @@ local LOCAL_PLAYER = Players.LocalPlayer
 local httpRequest = request or http_request or (syn and syn.request) or (http and http.request)
 local notifiedItems = {} -- Stores items already sent during the current shop cycle
 
--- Catalog Data Storage
-local catalogData = {} -- Format: [itemName] = {min = rawNum, max = rawNum, minStr = "1T", maxStr = "3T"}
-local catalogMessageId = nil -- Remembers the Discord message ID for editing
+-- Catalog Data Storage & Persistence Variables
+local catalogData = {} 
+local catalogMessageId = nil
 
 -- Custom Image Overrides based on Item Name
 local CUSTOM_IMAGE_URLS = {
@@ -37,6 +38,35 @@ local CUSTOM_IMAGE_URLS = {
     ["Armored SUV"] = "https://media.discordapp.net/attachments/1209486970112315402/1558600228070752319/scar-removebg-preview.png?ex=6acc0713&is=6acab593&hm=b2abf5790097d2b560d913df54fd7b05fb88ac30c4817b99d268e18f8dce4b1e&=&format=webp&quality=lossless"
 }
 
+-- ================= FILE SAVING & LOADING =================
+local function LoadCatalogFromFile()
+    if readfile and isfile and isfile(SAVE_FILE_NAME) then
+        local success, result = pcall(function()
+            return HttpService:JSONDecode(readfile(SAVE_FILE_NAME))
+        end)
+        if success and type(result) == "table" then
+            catalogData = result.data or {}
+            catalogMessageId = result.messageId or nil
+            print("[Dusk Catalog] Successfully loaded saved catalog data!")
+        end
+    end
+end
+
+local function SaveCatalogToFile()
+    if writefile then
+        pcall(function()
+            local payload = {
+                data = catalogData,
+                messageId = catalogMessageId
+            }
+            writefile(SAVE_FILE_NAME, HttpService:JSONEncode(payload))
+        end)
+    end
+end
+-- Initialize saved data on script startup
+LoadCatalogFromFile()
+-- =========================================================
+
 -- Strips XML/HTML tags and trims whitespace
 local function CleanText(rawText)
     if not rawText then return "" end
@@ -46,7 +76,7 @@ local function CleanText(rawText)
     return string.match(clean, "^%s*(.-)%s*$") or ""
 end
 
--- Converts formatted currency strings to raw numbers for proper comparison
+-- Converts formatted currency strings to raw numbers
 local function ParsePriceToNumber(rawPriceText)
     if not rawPriceText or rawPriceText == "" then return nil end
     local upperText = string.upper(rawPriceText)
@@ -89,7 +119,7 @@ local function GetCatalogRarityDetails(typeText, isGold)
     return false, ""
 end
 
--- Regular alert rarity check (keeps existing Mythic/Secret/Forbidden notifications working)
+-- Regular alert rarity check
 local function GetRarityDetails(typeText)
     local upperText = string.upper(typeText)
     if string.find(upperText, "FORBIDDEN") then
@@ -124,7 +154,6 @@ end
 -- Updates or creates the persistent price range catalog Discord message
 local function UpdateCatalogMessage()
     local descriptionLines = { "```text", string.format("%-22s %s", "Item", "Price Range") }
-    string.rep("-", 40)
     table.insert(descriptionLines, string.rep("-", 38))
 
     for itemName, data in pairs(catalogData) do
@@ -153,8 +182,7 @@ local function UpdateCatalogMessage()
 
     pcall(function()
         if not catalogMessageId then
-            -- Send initial message if it doesn't exist yet and grab ID via query/response parsing if supported, 
-            -- or alternatively you can paste your channel webhook endpoint execute logic here.
+            -- Send initial message if it doesn't exist yet
             local response = httpRequest({
                 Url = WEBHOOK_URL .. "?wait=true",
                 Method = "POST",
@@ -165,10 +193,11 @@ local function UpdateCatalogMessage()
                 local decoded = HttpService:JSONDecode(response.Body)
                 if decoded and decoded.id then
                     catalogMessageId = decoded.id
+                    SaveCatalogToFile() -- Save message ID immediately
                 end
             end
         else
-            -- Edit existing message via PATCH using the saved message ID
+            -- Edit existing message via PATCH using saved message ID
             local editUrl = WEBHOOK_URL .. "/messages/" .. catalogMessageId
             httpRequest({
                 Url = editUrl,
@@ -267,7 +296,6 @@ local function ScanShopAndNotify()
                         end
 
                         local embedData = {
-                            ["title"] = "🔥 " + itemName, -- Fixed concatenation operator fix below
                             ["title"] = "🔥 " .. itemName,
                             ["color"] = color,
                             ["fields"] = {
@@ -311,6 +339,7 @@ local function ScanShopAndNotify()
     end
 
     if catalogUpdated then
+        SaveCatalogToFile()
         UpdateCatalogMessage()
     end
 
@@ -323,7 +352,7 @@ end
 
 -- Continuous background thread
 task.spawn(function()
-    print("[Dusk - Shop Alerts] Active! Watching CashScroller & Catalog...")
+    print("[Dusk - Shop Alerts] Active! Watching CashScroller & Persistent Catalog...")
     while true do
         pcall(ScanShopAndNotify)
         task.wait(SCAN_INTERVAL)
