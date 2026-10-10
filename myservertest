@@ -1,0 +1,331 @@
+local HttpService = game:GetService("HttpService")
+local Players = game:GetService("Players")
+
+-- ================= CONFIGURATION =================
+local WEBHOOK_URL = "https://discord.com/api/webhooks/1549486969220890737/2RYHoKo77nt1lsbGnaddqJtqWgfbllssylfSsUzxNKdNyCyyvtsKIBHT4zUA5Mkx_d-s"
+
+-- Role Pings per Rarity
+local ROLE_PING_MYTHIC = "<@&1555969138285875220>"
+local ROLE_PING_SECRET = "<@&1555969464695132271>"
+local ROLE_PING_SECRET_UNDER_1_5T = "<@&1557516387407241257>" -- Ping for Secret < 1.5T
+
+local SCAN_INTERVAL = 2 -- How often to check the shop (in seconds)
+
+local COLOR_CYAN = 65535         -- Cyan (#00FFFF) for Secret
+local COLOR_PINK_RED = 13323087   -- Dark Pinkish-Red (#CB2C4F) for Mythic
+local COLOR_CRIMSON = 15728640    -- Crimson Red (#EF0100) for Forbidden
+-- =================================================
+
+local LOCAL_PLAYER = Players.LocalPlayer
+local httpRequest = request or http_request or (syn and syn.request) or (http and http.request)
+local notifiedItems = {} -- Stores items already sent during the current shop cycle
+
+-- Catalog Data Storage
+local catalogData = {} -- Format: [itemName] = {min = rawNum, max = rawNum, minStr = "1T", maxStr = "3T"}
+local catalogMessageId = nil -- Remembers the Discord message ID for editing
+
+-- Custom Image Overrides based on Item Name
+local CUSTOM_IMAGE_URLS = {
+    ["Starfall Repeater"] = "https://cdn.discordapp.com/attachments/1209486970112315402/1558600099259486240/wmremove-transformed-removebg-preview.png?ex=6acc06f5&is=6acab575&hm=11d468a9c9104d94604726f600eed91b06f3720399d97ae853756ef45d77f838&",
+    ["Midnight Zeppelin"] = "https://media.discordapp.net/attachments/1209486970112315402/1558600176715694110/sballon-removebg-preview.png?ex=6acc0707&is=6acab587&hm=15d737c43b8bb61917cfff488f3b1ddd9cc3d7ca0cafded0bf11eb246b5ac435&=&format=webp&quality=lossless",
+    ["Vault-Steel Overcoat"] = "https://media.discordapp.net/attachments/1209486970112315402/1558600137851535360/scoat-removebg-preview.png?ex=6acc06fe&is=6acab57e&hm=4f5e5c7dd39f17b4830f1e5498f36dac530fe621da56230c426d12073ebe1920&=&format=webp&quality=lossless",
+    ["M4A1"] = "https://media.discordapp.net/attachments/1209486970112315402/1558600194881486988/sgun-removebg-preview.png?ex=6acc070b&is=6acab58b&hm=2621f80bec40d0b05c9c07448b91777c650cc296eab9ac136f1903b9aeadf3f6&=&format=webp&quality=lossless",
+    ["Meteorite Mantle"] = "https://media.discordapp.net/attachments/1209486970112315402/1558600260933128273/armor-removebg-preview.png?ex=6acc071b&is=6acab59b&hm=7e6e1d09099a83628834475068fbb45c6b797d2f314a025efdc7ddbe9b884e2c&=&format=webp&quality=lossless",
+    ["The Final Word"] = "https://media.discordapp.net/attachments/1209486970112315402/1558600276838055966/gun-removebg-preview.png?ex=6acc071f&is=6acab59f&hm=225499dd214da1e2e1376f11fa97fc425607b920bb577bf16252ed7725406849&=&format=webp&quality=lossless",
+    ["The Gilded Leviathan"] = "https://media.discordapp.net/attachments/1209486970112315402/1558600295347392512/ship-removebg-preview.png?ex=6acc0723&is=6acab5a3&hm=459ebdea2d31bbe34e05771c7f97e29bdfa6865f9fd03c79f0ccdf13eb0dfafa&=&format=webp&quality=lossless",
+    ["Slick Armor"] = "https://media.discordapp.net/attachments/1209486970112315402/1558600232823169156/sarmor-removebg-preview.png?ex=6acc0714&is=6acab594&hm=06f0e4ec4761b471b6d35fd39c5c8d71eefed44f810ef6f805ba986781f8e5ca&=&format=webp&quality=lossless",
+    ["Armored SUV"] = "https://media.discordapp.net/attachments/1209486970112315402/1558600228070752319/scar-removebg-preview.png?ex=6acc0713&is=6acab593&hm=b2abf5790097d2b560d913df54fd7b05fb88ac30c4817b99d268e18f8dce4b1e&=&format=webp&quality=lossless"
+}
+
+-- Strips XML/HTML tags and trims whitespace
+local function CleanText(rawText)
+    if not rawText then return "" end
+    local clean = string.gsub(rawText, "<[^>]- >", "")
+    clean = string.gsub(clean, "<[^>]+>", "")
+    clean = string.gsub(clean, "%s+", " ")
+    return string.match(clean, "^%s*(.-)%s*$") or ""
+end
+
+-- Converts formatted currency strings to raw numbers for proper comparison
+local function ParsePriceToNumber(rawPriceText)
+    if not rawPriceText or rawPriceText == "" then return nil end
+    local upperText = string.upper(rawPriceText)
+    
+    local numString = string.match(upperText, "[%d%.]+")
+    if not numString then return nil end
+    local num = tonumber(numString)
+    if not num then return nil end
+
+    if string.find(upperText, "T") or string.find(upperText, "TRILLION") then
+        return num * 1e12
+    elseif string.find(upperText, "B") or string.find(upperText, "BILLION") then
+        return num * 1e9
+    elseif string.find(upperText, "M") or string.find(upperText, "MILLION") then
+        return num * 1e6
+    elseif string.find(upperText, "K") or string.find(upperText, "THOUSAND") then
+        return num * 1e3
+    end
+
+    return num
+end
+
+-- Converts any asset ID / rbxassetid string directly into a clean Discord-compatible image URL
+local function FetchImageUrl(rawImageId)
+    if not rawImageId or rawImageId == "" then return nil end
+    local assetId = string.match(tostring(rawImageId), "%d+")
+    if not assetId then return nil end
+
+    return "https://www.roblox.com/asset-thumbnail/image?assetId=" .. assetId .. "&width=420&height=420&format=png"
+end
+
+-- Filter rules: Record all Forbidden, and ONLY Cash Secrets (Avoid Gold Bar Secrets)
+local function GetCatalogRarityDetails(typeText, isGold)
+    local upperText = string.upper(typeText)
+    if string.find(upperText, "FORBIDDEN") then
+        return true, "FORBIDDEN"
+    elseif string.find(upperText, "SECRET") and not isGold then
+        return true, "SECRET"
+    end
+    return false, ""
+end
+
+-- Regular alert rarity check (keeps existing Mythic/Secret/Forbidden notifications working)
+local function GetRarityDetails(typeText)
+    local upperText = string.upper(typeText)
+    if string.find(upperText, "FORBIDDEN") then
+        return COLOR_CRIMSON, "FORBIDDEN", true, nil              
+    elseif string.find(upperText, "SECRET") then
+        return COLOR_CYAN, "SECRET", true, ROLE_PING_SECRET       
+    elseif string.find(upperText, "MYTHIC") then
+        return COLOR_PINK_RED, "MYTHIC", true, ROLE_PING_MYTHIC   
+    end
+    return nil, "", false, nil
+end
+
+-- Checks if an item frame or price string indicates a Gold Bar currency item
+local function IsGoldItem(itemFrame, rawPriceText)
+    local upperRaw = string.upper(rawPriceText or "")
+    if string.find(upperRaw, "GOLD") or string.find(upperRaw, "BAR") then
+        return true
+    end
+
+    for _, desc in ipairs(itemFrame:GetDescendants()) do
+        if desc:IsA("TextLabel") or desc:IsA("TextButton") then
+            local txt = string.upper(desc.Text or "")
+            if string.find(txt, "GOLD") or string.find(txt, "BAR") then
+                return true
+            end
+        end
+    end
+
+    return false
+end
+
+-- Updates or creates the persistent price range catalog Discord message
+local function UpdateCatalogMessage()
+    local descriptionLines = { "```text", string.format("%-22s %s", "Item", "Price Range") }
+    string.rep("-", 40)
+    table.insert(descriptionLines, string.rep("-", 38))
+
+    for itemName, data in pairs(catalogData) do
+        local rangeStr = ""
+        if data.minStr == data.maxStr then
+            rangeStr = data.minStr
+        else
+            rangeStr = data.minStr .. " - " .. data.maxStr
+        end
+        table.insert(descriptionLines, string.format("%-22s %s", itemName, rangeStr))
+    end
+    table.insert(descriptionLines, "```")
+
+    local embedContent = table.concat(descriptionLines, "\n")
+    local payload = {
+        ["embeds"] = {
+            {
+                ["title"] = "📊 Market Price Range Catalog",
+                ["description"] = embedContent,
+                ["color"] = 3447003, -- Blue
+                ["footer"] = { ["text"] = "Updated live automatically" },
+                ["timestamp"] = DateTime.now():ToIsoDate()
+            }
+        }
+    }
+
+    pcall(function()
+        if not catalogMessageId then
+            -- Send initial message if it doesn't exist yet and grab ID via query/response parsing if supported, 
+            -- or alternatively you can paste your channel webhook endpoint execute logic here.
+            local response = httpRequest({
+                Url = WEBHOOK_URL .. "?wait=true",
+                Method = "POST",
+                Headers = { ["Content-Type"] = "application/json" },
+                Body = HttpService:JSONEncode(payload)
+            })
+            if response and response.Body then
+                local decoded = HttpService:JSONDecode(response.Body)
+                if decoded and decoded.id then
+                    catalogMessageId = decoded.id
+                end
+            end
+        else
+            -- Edit existing message via PATCH using the saved message ID
+            local editUrl = WEBHOOK_URL .. "/messages/" .. catalogMessageId
+            httpRequest({
+                Url = editUrl,
+                Method = "PATCH",
+                Headers = { ["Content-Type"] = "application/json" },
+                Body = HttpService:JSONEncode(payload)
+            })
+        end
+    end)
+end
+
+-- Main function to scan the shop
+local function ScanShopAndNotify()
+    local mafiaUI = LOCAL_PLAYER.PlayerGui:FindFirstChild("MafiaWarsUI")
+    if not mafiaUI then return end
+
+    local shopPanel = mafiaUI:FindFirstChild("Root") 
+        and mafiaUI.Root:FindFirstChild("Content") 
+        and mafiaUI.Root.Content:FindFirstChild("ShopPanel")
+    if not shopPanel then return end
+
+    local cashScroller = shopPanel:FindFirstChild("CashScroller")
+    if not cashScroller then return end
+
+    local currentlyVisible = {}
+    local catalogUpdated = false
+
+    for _, itemFrame in ipairs(cashScroller:GetChildren()) do
+        if itemFrame:IsA("GuiObject") and string.match(itemFrame.Name, "^Shop_") and itemFrame.Visible then
+            currentlyVisible[itemFrame.Name] = true
+
+            local typeLabel = itemFrame:FindFirstChild("ItemText", true) or itemFrame:FindFirstChild("TypeText", true)
+            local rawTypeText = typeLabel and typeLabel.Text or ""
+            local cleanedType = CleanText(rawTypeText)
+
+            local priceLabel = itemFrame:FindFirstChild("PriceText", true)
+            local rawPriceText = priceLabel and priceLabel.Text or ""
+            local priceText = CleanText(rawPriceText)
+            if priceText == "" then priceText = "N/A" end
+
+            local isGold = IsGoldItem(itemFrame, rawPriceText)
+            local nameLabel = itemFrame:FindFirstChild("ItemName", true)
+            local itemName = nameLabel and CleanText(nameLabel.Text) or itemFrame.Name
+
+            -- ================= CATALOG LOGIC =================
+            local recordInCatalog, _ = GetCatalogRarityDetails(cleanedType, isGold)
+            if recordInCatalog then
+                local numericVal = ParsePriceToNumber(priceText)
+                if numericVal then
+                    if not catalogData[itemName] then
+                        catalogData[itemName] = {
+                            min = numericVal,
+                            max = numericVal,
+                            minStr = priceText,
+                            maxStr = priceText
+                        }
+                        catalogUpdated = true
+                    else
+                        if numericVal < catalogData[itemName].min then
+                            catalogData[itemName].min = numericVal
+                            catalogData[itemName].minStr = priceText
+                            catalogUpdated = true
+                        end
+                        if numericVal > catalogData[itemName].max then
+                            catalogData[itemName].max = numericVal
+                            catalogData[itemName].maxStr = priceText
+                            catalogUpdated = true
+                        end
+                    end
+                end
+            end
+            -- =================================================
+
+            local color, rarityName, isTargetRarity, rolePing = GetRarityDetails(cleanedType)
+
+            if isTargetRarity then
+                if not notifiedItems[itemFrame.Name] then
+                    if isGold then
+                        notifiedItems[itemFrame.Name] = true
+                    else
+                        local statLabel = itemFrame:FindFirstChild("StatText", true)
+
+                        local numericPrice = ParsePriceToNumber(priceText)
+                        if rarityName == "SECRET" and numericPrice and numericPrice < 1.5e12 then
+                            rolePing = ROLE_PING_SECRET .. " " .. ROLE_PING_SECRET_UNDER_1_5T
+                        end
+
+                        local statText = statLabel and CleanText(statLabel.Text) or "None"
+
+                        local imageUrl = CUSTOM_IMAGE_URLS[itemName]
+                        if not imageUrl then
+                            local iconPlate = itemFrame:FindFirstChild("IconPlate", true)
+                            local itemIcon = iconPlate and (iconPlate:FindFirstChild("ItemIcon", true) or iconPlate:FindFirstChildOfClass("ImageLabel"))
+                            local rawImageId = itemIcon and itemIcon.Image or ""
+                            imageUrl = FetchImageUrl(rawImageId)
+                        end
+
+                        local embedData = {
+                            ["title"] = "🔥 " + itemName, -- Fixed concatenation operator fix below
+                            ["title"] = "🔥 " .. itemName,
+                            ["color"] = color,
+                            ["fields"] = {
+                                { ["name"] = "✨ Rarity", ["value"] = rarityName, ["inline"] = true },
+                                { ["name"] = "💰 Price", ["value"] = priceText, ["inline"] = true },
+                                { ["name"] = "⚔️ Stats", ["value"] = statText, ["inline"] = false },
+                                { ["name"] = "📦 Type", ["value"] = string.upper(cleanedType), ["inline"] = false }
+                            },
+                            ["footer"] = { ["text"] = "Dusk - Shop Alerts" },
+                            ["timestamp"] = DateTime.now():ToIsoDate()
+                        }
+
+                        if imageUrl then
+                            embedData["thumbnail"] = { ["url"] = imageUrl }
+                        end
+
+                        local payloadData = {
+                            ["username"] = "Dusk - Shop Alerts",
+                            ["embeds"] = { embedData }
+                        }
+
+                        if rolePing and rolePing ~= "" then
+                            payloadData["content"] = rolePing
+                        end
+
+                        pcall(function()
+                            httpRequest({
+                                Url = WEBHOOK_URL,
+                                Method = "POST",
+                                Headers = { ["Content-Type"] = "application/json" },
+                                Body = HttpService:JSONEncode(payloadData)
+                            })
+                        end)
+
+                        notifiedItems[itemFrame.Name] = true
+                        task.wait(0.5) 
+                    end
+                end
+            end
+        end
+    end
+
+    if catalogUpdated then
+        UpdateCatalogMessage()
+    end
+
+    for cachedName, _ in pairs(notifiedItems) do
+        if not currentlyVisible[cachedName] then
+            notifiedItems[cachedName] = nil
+        end
+    end
+end
+
+-- Continuous background thread
+task.spawn(function()
+    print("[Dusk - Shop Alerts] Active! Watching CashScroller & Catalog...")
+    while true do
+        pcall(ScanShopAndNotify)
+        task.wait(SCAN_INTERVAL)
+    end
+end)
