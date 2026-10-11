@@ -2,6 +2,9 @@ local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
 
 -- ================= CONFIGURATION =================
+local ITEM_BOT_NAME = "Dusk - Shop Alerts"      -- Name for Item Alert notifications
+local CATALOG_BOT_NAME = "Dusk - Catalog"  -- Name for the Price Catalog message
+
 local WEBHOOK_URL = "https://discord.com/api/webhooks/1549560381993779281/LlWPSWdoMdrpvbdFr6ry0pXSORodrTIZswPLazcArdYa4te70dExlkdlYeM4gjsPYyJe"
 local SAVE_FILE_NAME = "dusk_catalog_data.json"
 
@@ -47,7 +50,7 @@ local function LoadCatalogFromFile()
         if success and type(result) == "table" then
             catalogData = result.data or {}
             catalogMessageId = result.messageId or nil
-            print("[Dusk Catalog] Successfully loaded saved catalog data!")
+            print("[" .. CATALOG_BOT_NAME .. "] Successfully loaded saved catalog data!")
         end
     end
 end
@@ -80,7 +83,6 @@ local function GetEffectivePrice(rawPriceText)
     local cleaned = CleanText(rawPriceText)
     if cleaned == "" then return "N/A" end
     
-    -- Split by spaces and grab the last element (the discount price)
     local parts = {}
     for part in string.gmatch(cleaned, "%S+") do
         table.insert(parts, part)
@@ -186,12 +188,13 @@ local function UpdateCatalogMessage()
 
     local embedContent = table.concat(descriptionLines, "\n")
     local payload = {
+        ["username"] = CATALOG_BOT_NAME, -- Bot name specifically for catalog
         ["embeds"] = {
             {
                 ["title"] = "📊 Market Price Range Catalog",
                 ["description"] = embedContent,
                 ["color"] = 3447003, -- Blue
-                ["footer"] = { ["text"] = "Updated live automatically" },
+                ["footer"] = { ["text"] = CATALOG_BOT_NAME .. " • I am da Goat" },
                 ["timestamp"] = DateTime.now():ToIsoDate()
             }
         }
@@ -318,7 +321,7 @@ local function ScanShopAndNotify()
                                 { ["name"] = "⚔️ Stats", ["value"] = statText, ["inline"] = false },
                                 { ["name"] = "📦 Type", ["value"] = string.upper(cleanedType), ["inline"] = false }
                             },
-                            ["footer"] = { ["text"] = "Dusk - Shop Alerts" },
+                            ["footer"] = { ["text"] = ITEM_BOT_NAME },
                             ["timestamp"] = DateTime.now():ToIsoDate()
                         }
 
@@ -327,7 +330,7 @@ local function ScanShopAndNotify()
                         end
 
                         local payloadData = {
-                            ["username"] = "Dusk - Shop Alerts",
+                            ["username"] = ITEM_BOT_NAME, -- Bot name specifically for item alerts
                             ["embeds"] = { embedData }
                         }
 
@@ -366,7 +369,7 @@ end
 
 -- Continuous background thread
 task.spawn(function()
-    print("[Dusk - Shop Alerts] Active! Watching CashScroller & Persistent Catalog...")
+    print("[" .. ITEM_BOT_NAME .. "] Active! Watching CashScroller & Persistent Catalog...")
     pcall(UpdateCatalogMessage)
     while true do
         pcall(ScanShopAndNotify)
