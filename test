@@ -5,7 +5,7 @@ local Players = game:GetService("Players")
 local ITEM_BOT_NAME = "Dusk - Shop Alerts"      -- Name for Item Alert notifications
 local CATALOG_BOT_NAME = "Dusk - Price Catalog"  -- Name for the Price Catalog message
 
-local WEBHOOK_URL = "https://discord.com/api/webhooks/1549560381993779281/LlWPSWdoMdrpvbdFr6ry0pXSORodrTIZswPLazcArdYa4te70dExlkdlYeM4gjsPYyJe"
+local WEBHOOK_URL = "[https://discord.com/api/webhooks/1549560381993779281/LlWPSWdoMdrpvbdFr6ry0pXSORodrTIZswPLazcArdYa4te70dExlkdlYeM4gjsPYyJe](https://discord.com/api/webhooks/1549560381993779281/LlWPSWdoMdrpvbdFr6ry0pXSORodrTIZswPLazcArdYa4te70dExlkdlYeM4gjsPYyJe)"
 local SAVE_FILE_NAME = "dusk_catalog_data.json"
 
 -- Role Pings per Rarity
@@ -30,15 +30,15 @@ local catalogMessageId = nil
 
 -- Custom Image Overrides based on Item Name
 local CUSTOM_IMAGE_URLS = {
-    ["Starfall Repeater"] = "https://cdn.discordapp.com/attachments/1209486970112315402/1558600099259486240/wmremove-transformed-removebg-preview.png?ex=6acc06f5&is=6acab575&hm=11d468a9c9104d94604726f600eed91b06f3720399d97ae853756ef45d77f838&",
-    ["Midnight Zeppelin"] = "https://media.discordapp.net/attachments/1209486970112315402/1558600176715694110/sballon-removebg-preview.png?ex=6acc0707&is=6acab587&hm=15d737c43b8bb61917cfff488f3b1ddd9cc3d7ca0cafded0bf11eb246b5ac435&=&format=webp&quality=lossless",
-    ["Vault-Steel Overcoat"] = "https://media.discordapp.net/attachments/1209486970112315402/1558600137851535360/scoat-removebg-preview.png?ex=6acc06fe&is=6acab57e&hm=4f5e5c7dd39f17b4830f1e5498f36dac530fe621da56230c426d12073ebe1920&=&format=webp&quality=lossless",
-    ["M4A1"] = "https://media.discordapp.net/attachments/1209486970112315402/1558600194881486988/sgun-removebg-preview.png?ex=6acc070b&is=6acab58b&hm=2621f80bec40d0b05c9c07448b91777c650cc296eab9ac136f1903b9aeadf3f6&=&format=webp&quality=lossless",
-    ["Meteorite Mantle"] = "https://media.discordapp.net/attachments/1209486970112315402/1558600260933128273/armor-removebg-preview.png?ex=6acc071b&is=6acab59b&hm=7e6e1d09099a83628834475068fbb45c6b797d2f314a025efdc7ddbe9b884e2c&=&format=webp&quality=lossless",
-    ["The Final Word"] = "https://media.discordapp.net/attachments/1209486970112315402/1558600276838055966/gun-removebg-preview.png?ex=6acc071f&is=6acab59f&hm=225499dd214da1e2e1376f11fa97fc425607b920bb577bf16252ed7725406849&=&format=webp&quality=lossless",
-    ["The Gilded Leviathan"] = "https://media.discordapp.net/attachments/1209486970112315402/1558600295347392512/ship-removebg-preview.png?ex=6acc0723&is=6acab5a3&hm=459ebdea2d31bbe34e05771c7f97e29bdfa6865f9fd03c79f0ccdf13eb0dfafa&=&format=webp&quality=lossless",
-    ["Slick Armor"] = "https://media.discordapp.net/attachments/1209486970112315402/1558600232823169156/sarmor-removebg-preview.png?ex=6acc0714&is=6acab594&hm=06f0e4ec4761b471b6d35fd39c5c8d71eefed44f810ef6f805ba986781f8e5ca&=&format=webp&quality=lossless",
-    ["Armored SUV"] = "https://media.discordapp.net/attachments/1209486970112315402/1558600228070752319/scar-removebg-preview.png?ex=6acc0713&is=6acab593&hm=b2abf5790097d2b560d913df54fd7b05fb88ac30c4817b99d268e18f8dce4b1e&=&format=webp&quality=lossless"
+    ["Starfall Repeater"] = "[https://cdn.discordapp.com/attachments/1209486970112315402/1558600099259486240/wmremove-transformed-removebg-preview.png?ex=6acc06f5&is=6acab575&hm=11d468a9c9104d94604726f600eed91b06f3720399d97ae853756ef45d77f838](https://cdn.discordapp.com/attachments/1209486970112315402/1558600099259486240/wmremove-transformed-removebg-preview.png?ex=6acc06f5&is=6acab575&hm=11d468a9c9104d94604726f600eed91b06f3720399d97ae853756ef45d77f838)&",
+    ["Midnight Zeppelin"] = "[https://media.discordapp.net/attachments/1209486970112315402/1558600176715694110/sballon-removebg-preview.png?ex=6acc0707&is=6acab587&hm=15d737c43b8bb61917cfff488f3b1ddd9cc3d7ca0cafded0bf11eb246b5ac435&=&format=webp&quality=lossless](https://media.discordapp.net/attachments/1209486970112315402/1558600176715694110/sballon-removebg-preview.png?ex=6acc0707&is=6acab587&hm=15d737c43b8bb61917cfff488f3b1ddd9cc3d7ca0cafded0bf11eb246b5ac435&=&format=webp&quality=lossless)",
+    ["Vault-Steel Overcoat"] = "[https://media.discordapp.net/attachments/1209486970112315402/1558600137851535360/scoat-removebg-preview.png?ex=6acc06fe&is=6acab57e&hm=4f5e5c7dd39f17b4830f1e5498f36dac530fe621da56230c426d12073ebe1920&=&format=webp&quality=lossless](https://media.discordapp.net/attachments/1209486970112315402/1558600137851535360/scoat-removebg-preview.png?ex=6acc06fe&is=6acab57e&hm=4f5e5c7dd39f17b4830f1e5498f36dac530fe621da56230c426d12073ebe1920&=&format=webp&quality=lossless)",
+    ["M4A1"] = "[https://media.discordapp.net/attachments/1209486970112315402/1558600194881486988/sgun-removebg-preview.png?ex=6acc070b&is=6acab58b&hm=2621f80bec40d0b05c9c07448b91777c650cc296eab9ac136f1903b9aeadf3f6&=&format=webp&quality=lossless](https://media.discordapp.net/attachments/1209486970112315402/1558600194881486988/sgun-removebg-preview.png?ex=6acc070b&is=6acab58b&hm=2621f80bec40d0b05c9c07448b91777c650cc296eab9ac136f1903b9aeadf3f6&=&format=webp&quality=lossless)",
+    ["Meteorite Mantle"] = "[https://media.discordapp.net/attachments/1209486970112315402/1558600260933128273/armor-removebg-preview.png?ex=6acc071b&is=6acab59b&hm=7e6e1d09099a83628834475068fbb45c6b797d2f314a025efdc7ddbe9b884e2c&=&format=webp&quality=lossless](https://media.discordapp.net/attachments/1209486970112315402/1558600260933128273/armor-removebg-preview.png?ex=6acc071b&is=6acab59b&hm=7e6e1d09099a83628834475068fbb45c6b797d2f314a025efdc7ddbe9b884e2c&=&format=webp&quality=lossless)",
+    ["The Final Word"] = "[https://media.discordapp.net/attachments/1209486970112315402/1558600276838055966/gun-removebg-preview.png?ex=6acc071f&is=6acab59f&hm=225499dd214da1e2e1376f11fa97fc425607b920bb577bf16252ed7725406849&=&format=webp&quality=lossless](https://media.discordapp.net/attachments/1209486970112315402/1558600276838055966/gun-removebg-preview.png?ex=6acc071f&is=6acab59f&hm=225499dd214da1e2e1376f11fa97fc425607b920bb577bf16252ed7725406849&=&format=webp&quality=lossless)",
+    ["The Gilded Leviathan"] = "[https://media.discordapp.net/attachments/1209486970112315402/1558600295347392512/ship-removebg-preview.png?ex=6acc0723&is=6acab5a3&hm=459ebdea2d31bbe34e05771c7f97e29bdfa6865f9fd03c79f0ccdf13eb0dfafa&=&format=webp&quality=lossless](https://media.discordapp.net/attachments/1209486970112315402/1558600295347392512/ship-removebg-preview.png?ex=6acc0723&is=6acab5a3&hm=459ebdea2d31bbe34e05771c7f97e29bdfa6865f9fd03c79f0ccdf13eb0dfafa&=&format=webp&quality=lossless)",
+    ["Slick Armor"] = "[https://media.discordapp.net/attachments/1209486970112315402/1558600232823169156/sarmor-removebg-preview.png?ex=6acc0714&is=6acab594&hm=06f0e4ec4761b471b6d35fd39c5c8d71eefed44f810ef6f805ba986781f8e5ca&=&format=webp&quality=lossless](https://media.discordapp.net/attachments/1209486970112315402/1558600232823169156/sarmor-removebg-preview.png?ex=6acc0714&is=6acab594&hm=06f0e4ec4761b471b6d35fd39c5c8d71eefed44f810ef6f805ba986781f8e5ca&=&format=webp&quality=lossless)",
+    ["Armored SUV"] = "[https://media.discordapp.net/attachments/1209486970112315402/1558600228070752319/scar-removebg-preview.png?ex=6acc0713&is=6acab593&hm=b2abf5790097d2b560d913df54fd7b05fb88ac30c4817b99d268e18f8dce4b1e&=&format=webp&quality=lossless](https://media.discordapp.net/attachments/1209486970112315402/1558600228070752319/scar-removebg-preview.png?ex=6acc0713&is=6acab593&hm=b2abf5790097d2b560d913df54fd7b05fb88ac30c4817b99d268e18f8dce4b1e&=&format=webp&quality=lossless)"
 }
 
 -- ================= FILE SAVING & LOADING =================
@@ -94,27 +94,29 @@ local function GetEffectivePrice(rawPriceText)
     return cleaned
 end
 
--- Converts formatted currency strings to raw numbers (supports both Cash and Gold Bar numbers)
-local function ParsePriceToNumber(rawPriceText)
+-- Converts formatted currency strings to raw numbers
+local function ParsePriceToNumber(rawPriceText, isGold)
     local effectiveText = GetEffectivePrice(rawPriceText)
     if not effectiveText or effectiveText == "N/A" then return nil end
     local upperText = string.upper(effectiveText)
     
-    -- Strip commas so "8,570" becomes "8570"
+    -- Strip commas so "9,585" becomes "9585"
     local cleanNumStr = string.gsub(upperText, ",", "")
     local numString = string.match(cleanNumStr, "[%d%.]+")
     if not numString then return nil end
     local num = tonumber(numString)
     if not num then return nil end
 
-    if string.find(upperText, "T") or string.find(upperText, "TRILLION") then
-        return num * 1e12
-    elseif string.find(upperText, "B") or string.find(upperText, "BILLION") then
-        return num * 1e9
-    elseif string.find(upperText, "M") or string.find(upperText, "MILLION") then
-        return num * 1e6
-    elseif string.find(upperText, "K") or string.find(upperText, "THOUSAND") then
-        return num * 1e3
+    if not isGold then
+        if string.find(upperText, "T") or string.find(upperText, "TRILLION") then
+            return num * 1e12
+        elseif string.find(upperText, "B") or string.find(upperText, "BILLION") then
+            return num * 1e9
+        elseif string.find(upperText, "M") or string.find(upperText, "MILLION") then
+            return num * 1e6
+        elseif string.find(upperText, "K") or string.find(upperText, "THOUSAND") then
+            return num * 1e3
+        end
     end
 
     return num
@@ -126,35 +128,20 @@ local function FetchImageUrl(rawImageId)
     local assetId = string.match(tostring(rawImageId), "%d+")
     if not assetId then return nil end
 
-    return "https://www.roblox.com/asset-thumbnail/image?assetId=" .. assetId .. "&width=420&height=420&format=png"
+    return "[https://www.roblox.com/asset-thumbnail/image?assetId=](https://www.roblox.com/asset-thumbnail/image?assetId=)" .. assetId .. "&width=420&height=420&format=png"
 end
 
--- Filter rules: Record ONLY Gold Bar Forbiddens and ONLY Cash Secrets
+-- Filter rules for Catalog: ONLY Gold Bar Forbiddens and ONLY Cash Secrets
 local function GetCatalogRarityDetails(typeText, isGold)
     local upperText = string.upper(typeText)
     
-    -- Record FORBIDDEN only if it costs Gold Bars
     if string.find(upperText, "FORBIDDEN") and isGold then
         return true, "FORBIDDEN"
-    -- Record SECRET only if it costs Cash (not Gold)
     elseif string.find(upperText, "SECRET") and not isGold then
         return true, "SECRET"
     end
     
     return false, ""
-end
-
--- Regular alert rarity check
-local function GetRarityDetails(typeText)
-    local upperText = string.upper(typeText)
-    if string.find(upperText, "FORBIDDEN") then
-        return COLOR_CRIMSON, "FORBIDDEN", true, nil              
-    elseif string.find(upperText, "SECRET") then
-        return COLOR_CYAN, "SECRET", true, ROLE_PING_SECRET       
-    elseif string.find(upperText, "MYTHIC") then
-        return COLOR_PINK_RED, "MYTHIC", true, ROLE_PING_MYTHIC   
-    end
-    return nil, "", false, nil
 end
 
 -- Checks if an item frame or price string indicates a Gold Bar currency item
@@ -176,20 +163,69 @@ local function IsGoldItem(itemFrame, rawPriceText)
     return false
 end
 
+-- Regular alert rarity check (ONLY Cash Mythics and Cash Secrets allow notifications)
+local function GetRarityDetails(typeText, isGold)
+    if isGold then
+        -- Block ALL Gold Bar items (Mythic, Secret, Forbidden) from sending alert notifications
+        return nil, "", false, nil
+    end
+
+    local upperText = string.upper(typeText)
+    if string.find(upperText, "SECRET") then
+        return COLOR_CYAN, "SECRET", true, ROLE_PING_SECRET       
+    elseif string.find(upperText, "MYTHIC") then
+        return COLOR_PINK_RED, "MYTHIC", true, ROLE_PING_MYTHIC   
+    end
+
+    return nil, "", false, nil
+end
+
 -- Updates or creates the persistent price range catalog Discord message
 local function UpdateCatalogMessage()
-    local descriptionLines = { "```text", string.format("%-22s %s", "Item", "Price Range") }
-    table.insert(descriptionLines, string.rep("-", 38))
+    local descriptionLines = { "```ansi" }
+
+    -- Categorize items
+    local forbiddenItems = {}
+    local secretItems = {}
 
     for itemName, data in pairs(catalogData) do
-        local rangeStr = ""
-        if data.minStr == data.maxStr then
-            rangeStr = data.minStr
-        else
-            rangeStr = data.minStr .. " - " .. data.maxStr
+        if data.category == "FORBIDDEN" then
+            table.insert(forbiddenItems, { name = itemName, data = data })
+        elseif data.category == "SECRET" then
+            table.insert(secretItems, { name = itemName, data = data })
         end
-        table.insert(descriptionLines, string.format("%-22s %s", itemName, rangeStr))
     end
+
+    -- 🔴 FORBIDDEN SECTION (Red text ANSI code: \27[31m)
+    table.insert(descriptionLines, "\27[31m[ 🔴 FORBIDDEN ITEMS (Gold Bars) ]\27[0m")
+    table.insert(descriptionLines, string.format("%-22s %s", "Item", "Price Range"))
+    table.insert(descriptionLines, string.rep("-", 38))
+    
+    if #forbiddenItems == 0 then
+        table.insert(descriptionLines, "No recorded Forbidden items yet.")
+    else
+        for _, item in ipairs(forbiddenItems) do
+            local rangeStr = (item.data.minStr == item.data.maxStr) and item.data.minStr or (item.data.minStr .. " - " .. item.data.maxStr)
+            table.insert(descriptionLines, string.format("%-22s %s", item.name, rangeStr))
+        end
+    end
+
+    table.insert(descriptionLines, "") -- Spacer
+
+    -- 🔵 SECRET SECTION (Cyan/Blue text ANSI code: \27[36m)
+    table.insert(descriptionLines, "\27[36m[ 🔵 SECRET ITEMS (Cash) ]\27[0m")
+    table.insert(descriptionLines, string.format("%-22s %s", "Item", "Price Range"))
+    table.insert(descriptionLines, string.rep("-", 38))
+    
+    if #secretItems == 0 then
+        table.insert(descriptionLines, "No recorded Secret items yet.")
+    else
+        for _, item in ipairs(secretItems) do
+            local rangeStr = (item.data.minStr == item.data.maxStr) and item.data.minStr or (item.data.minStr .. " - " .. item.data.maxStr)
+            table.insert(descriptionLines, string.format("%-22s %s", item.name, rangeStr))
+        end
+    end
+
     table.insert(descriptionLines, "```")
 
     local embedContent = table.concat(descriptionLines, "\n")
@@ -200,7 +236,7 @@ local function UpdateCatalogMessage()
                 ["title"] = "📊 Market Price Range Catalog",
                 ["description"] = embedContent,
                 ["color"] = 3447003, -- Blue
-                ["footer"] = { ["text"] = CATALOG_BOT_NAME .. " • Price Range" },
+                ["footer"] = { ["text"] = CATALOG_BOT_NAME .. " • Updated live automatically" },
                 ["timestamp"] = DateTime.now():ToIsoDate()
             }
         }
@@ -265,23 +301,27 @@ local function ScanShopAndNotify()
             local nameLabel = itemFrame:FindFirstChild("ItemName", true)
             local itemName = nameLabel and CleanText(nameLabel.Text) or itemFrame.Name
 
-            -- Format display string for Gold Items in Catalog if needed (e.g. "8,570 Gold")
+            -- Raw string for Gold items (e.g. "9,585" -> "9585" without "Gold Bars")
             local catalogPriceStr = priceText
-            if isGold and not string.find(string.upper(priceText), "GOLD") then
-                catalogPriceStr = priceText .. " Gold"
+            if isGold then
+                local cleanDigits = string.gsub(priceText, "[^%d%.]", "")
+                if cleanDigits ~= "" then
+                    catalogPriceStr = cleanDigits
+                end
             end
 
             -- ================= CATALOG LOGIC =================
-            local recordInCatalog, _ = GetCatalogRarityDetails(cleanedType, isGold)
+            local recordInCatalog, catType = GetCatalogRarityDetails(cleanedType, isGold)
             if recordInCatalog then
-                local numericVal = ParsePriceToNumber(rawPriceText)
+                local numericVal = ParsePriceToNumber(rawPriceText, isGold)
                 if numericVal then
                     if not catalogData[itemName] then
                         catalogData[itemName] = {
                             min = numericVal,
                             max = numericVal,
                             minStr = catalogPriceStr,
-                            maxStr = catalogPriceStr
+                            maxStr = catalogPriceStr,
+                            category = catType
                         }
                         catalogUpdated = true
                     else
@@ -300,15 +340,15 @@ local function ScanShopAndNotify()
             end
             -- =================================================
 
-            local color, rarityName, isTargetRarity, rolePing = GetRarityDetails(cleanedType)
+            -- ================= ALERT NOTIFICATIONS =================
+            local color, rarityName, isTargetRarity, rolePing = GetRarityDetails(cleanedType, isGold)
 
             if isTargetRarity then
                 if not notifiedItems[itemFrame.Name] then
-                    -- Normal item alert handling
                     local statLabel = itemFrame:FindFirstChild("StatText", true)
 
-                    local numericPrice = ParsePriceToNumber(rawPriceText)
-                    if rarityName == "SECRET" and numericPrice and numericPrice < 1.5e12 and not isGold then
+                    local numericPrice = ParsePriceToNumber(rawPriceText, isGold)
+                    if rarityName == "SECRET" and numericPrice and numericPrice < 1.5e12 then
                         rolePing = ROLE_PING_SECRET .. " " .. ROLE_PING_SECRET_UNDER_1_5T
                     end
 
