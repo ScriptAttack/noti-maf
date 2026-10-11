@@ -125,11 +125,13 @@ end
 
 local function GetCatalogRarityDetails(typeText, isGold)
     local upperText = string.upper(typeText)
-    if string.find(upperText, "FORBIDDEN") and isGold then
+    
+    if string.find(upperText, "FORBIDDEN") then
         return true, "FORBIDDEN"
     elseif string.find(upperText, "SECRET") and not isGold then
         return true, "SECRET"
     end
+    
     return false, ""
 end
 
