@@ -63,7 +63,6 @@ local function SaveCatalogToFile()
         end)
     end
 end
--- Initialize saved data on script startup
 LoadCatalogFromFile()
 -- =========================================================
 
@@ -76,10 +75,28 @@ local function CleanText(rawText)
     return string.match(clean, "^%s*(.-)%s*$") or ""
 end
 
+-- Extracts the final/discounted price if multiple prices exist (e.g. "$4.86T $3.89T" -> "$3.89T")
+local function GetEffectivePrice(rawPriceText)
+    local cleaned = CleanText(rawPriceText)
+    if cleaned == "" then return "N/A" end
+    
+    -- Split by spaces and grab the last element (the discount price)
+    local parts = {}
+    for part in string.gmatch(cleaned, "%S+") do
+        table.insert(parts, part)
+    end
+    
+    if #parts > 0 then
+        return parts[#parts]
+    end
+    return cleaned
+end
+
 -- Converts formatted currency strings to raw numbers
 local function ParsePriceToNumber(rawPriceText)
-    if not rawPriceText or rawPriceText == "" then return nil end
-    local upperText = string.upper(rawPriceText)
+    local effectiveText = GetEffectivePrice(rawPriceText)
+    if not effectiveText or effectiveText == "N/A" then return nil end
+    local upperText = string.upper(effectiveText)
     
     local numString = string.match(upperText, "[%d%.]+")
     if not numString then return nil end
@@ -182,7 +199,6 @@ local function UpdateCatalogMessage()
 
     pcall(function()
         if not catalogMessageId then
-            -- Send initial message if it doesn't exist yet
             local response = httpRequest({
                 Url = WEBHOOK_URL .. "?wait=true",
                 Method = "POST",
@@ -193,11 +209,10 @@ local function UpdateCatalogMessage()
                 local decoded = HttpService:JSONDecode(response.Body)
                 if decoded and decoded.id then
                     catalogMessageId = decoded.id
-                    SaveCatalogToFile() -- Save message ID immediately
+                    SaveCatalogToFile()
                 end
             end
         else
-            -- Edit existing message via PATCH using saved message ID
             local editUrl = WEBHOOK_URL .. "/messages/" .. catalogMessageId
             httpRequest({
                 Url = editUrl,
@@ -235,8 +250,7 @@ local function ScanShopAndNotify()
 
             local priceLabel = itemFrame:FindFirstChild("PriceText", true)
             local rawPriceText = priceLabel and priceLabel.Text or ""
-            local priceText = CleanText(rawPriceText)
-            if priceText == "" then priceText = "N/A" end
+            local priceText = GetEffectivePrice(rawPriceText)
 
             local isGold = IsGoldItem(itemFrame, rawPriceText)
             local nameLabel = itemFrame:FindFirstChild("ItemName", true)
@@ -245,7 +259,7 @@ local function ScanShopAndNotify()
             -- ================= CATALOG LOGIC =================
             local recordInCatalog, _ = GetCatalogRarityDetails(cleanedType, isGold)
             if recordInCatalog then
-                local numericVal = ParsePriceToNumber(priceText)
+                local numericVal = ParsePriceToNumber(rawPriceText)
                 if numericVal then
                     if not catalogData[itemName] then
                         catalogData[itemName] = {
@@ -280,7 +294,7 @@ local function ScanShopAndNotify()
                     else
                         local statLabel = itemFrame:FindFirstChild("StatText", true)
 
-                        local numericPrice = ParsePriceToNumber(priceText)
+                        local numericPrice = ParsePriceToNumber(rawPriceText)
                         if rarityName == "SECRET" and numericPrice and numericPrice < 1.5e12 then
                             rolePing = ROLE_PING_SECRET .. " " .. ROLE_PING_SECRET_UNDER_1_5T
                         end
@@ -353,6 +367,7 @@ end
 -- Continuous background thread
 task.spawn(function()
     print("[Dusk - Shop Alerts] Active! Watching CashScroller & Persistent Catalog...")
+    pcall(UpdateCatalogMessage)
     while true do
         pcall(ScanShopAndNotify)
         task.wait(SCAN_INTERVAL)
