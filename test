@@ -5,7 +5,7 @@ local Players = game:GetService("Players")
 local ITEM_BOT_NAME = "Dusk - Shop Alerts"      -- Name for Item Alert notifications
 local CATALOG_BOT_NAME = "Dusk - Price Catalog"  -- Name for the Price Catalog message
 
-local WEBHOOK_URL = "https://discord.com/api/webhooks/1549560381993779281/LlWPSWdoMdrpvbdFr6ry0pXSORodrTIZswPLazcArdYa4te70dExlkdlYeM4gjsPYyJe](https://discord.com/api/webhooks/1549560381993779281/LlWPSWdoMdrpvbdFr6ry0pXSORodrTIZswPLazcArdYa4te70dExlkdlYeM4gjsPYyJe"
+local WEBHOOK_URL = "https://discord.com/api/webhooks/1549560381993779281/LlWPSWdoMdrpvbdFr6ry0pXSORodrTIZswPLazcArdYa4te70dExlkdlYeM4gjsPYyJe"
 local SAVE_FILE_NAME = "dusk_catalog_data.json"
 
 -- Role Pings per Rarity
