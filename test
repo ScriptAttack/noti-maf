@@ -123,18 +123,6 @@ local function FetchImageUrl(rawImageId)
     return "https://www.roblox.com/asset-thumbnail/image?assetId=" .. assetId .. "&width=420&height=420&format=png"
 end
 
-local function GetCatalogRarityDetails(typeText, isGold)
-    local upperText = string.upper(typeText)
-    
-    if string.find(upperText, "FORBIDDEN") or isGold then
-        return true, "FORBIDDEN"
-    elseif string.find(upperText, "SECRET") and not isGold then
-        return true, "SECRET"
-    end
-    
-    return false, ""
-end
-
 local function IsGoldItem(itemFrame, rawPriceText)
     local upperRaw = string.upper(rawPriceText or "")
     if string.find(upperRaw, "GOLD") or string.find(upperRaw, "BAR") then
@@ -152,11 +140,23 @@ local function IsGoldItem(itemFrame, rawPriceText)
     return false
 end
 
+local function GetCatalogRarityDetails(typeText, isGold)
+    local upperText = string.upper(typeText)
+    
+    if string.find(upperText, "FORBIDDEN") or isGold then
+        return true, "FORBIDDEN"
+    elseif string.find(upperText, "SECRET") and not isGold then
+        return true, "SECRET"
+    end
+    
+    return false, ""
+end
+
 local function GetRarityDetails(typeText, isGold)
     local upperText = string.upper(typeText)
     
     if isGold then
-        return nil, "", false, nil
+        return COLOR_CRIMSON, "FORBIDDEN", true, nil
     end
 
     if string.find(upperText, "SECRET") then
@@ -255,10 +255,15 @@ local function ScanShopAndNotify()
     local mafiaUI = LOCAL_PLAYER.PlayerGui:FindFirstChild("MafiaWarsUI")
     if not mafiaUI then return end
 
+    local shopPanel = mafiaUI:FindFirstChild("Root", true) and mafiaUI.Root:FindFirstChild("Content", true) and mafiaUI.Root.Content:FindFirstChild("ShopPanel", true)
+    local cashScroller = shopPanel and shopPanel:FindFirstChild("CashScroller", true) or mafiaUI:FindFirstChild("CashScroller", true)
+    
+    if not cashScroller then return end
+
     local currentlyVisible = {}
     local catalogUpdated = false
 
-    for _, itemFrame in ipairs(mafiaUI:GetDescendants()) do
+    for _, itemFrame in ipairs(cashScroller:GetChildren()) do
         if itemFrame:IsA("GuiObject") and string.match(itemFrame.Name, "^Shop_") then
             currentlyVisible[itemFrame.Name] = true
 
@@ -334,7 +339,6 @@ local function ScanShopAndNotify()
                     end
 
                     local embedData = {
-                        ["title"] = "🔥 " + itemName, -- Fixed concatenation or kept original formatting
                         ["title"] = "🔥 " .. itemName,
                         ["color"] = color,
                         ["fields"] = {
