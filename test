@@ -16,7 +16,7 @@ local ROLE_PING_SECRET_UNDER_1_5T = "<@&1557516387407241257>" -- Ping for Secret
 local SCAN_INTERVAL = 2 -- How often to check the shop (in seconds)
 
 local COLOR_CYAN = 65535         -- Cyan (#00FFFF) for Secret
-local COLOR_PINK_RED = 13323087    -- Dark Pinkish-Red (#CB2C4F) for Mythic
+local COLOR_PINK_RED = 13323087   -- Dark Pinkish-Red (#CB2C4F) for Mythic
 local COLOR_CRIMSON = 15728640    -- Crimson Red (#EF0100) for Forbidden
 -- =================================================
 
@@ -132,7 +132,7 @@ local function IsGoldItem(itemFrame, rawPriceText)
     for _, desc in ipairs(itemFrame:GetDescendants()) do
         if desc:IsA("TextLabel") or desc:IsA("TextButton") then
             local txt = string.upper(desc.Text or "")
-            if string.find(txt, "GOLD BAR") or string.find(txt, "GOLD COIN") then
+            if string.find(txt, "GOLD BAR") or string.find(txt, "GOLD COIN") or string.find(txt, "BAR") then
                 return true
             end
         end
@@ -155,7 +155,7 @@ end
 local function GetRarityDetails(typeText, isGold)
     local upperText = string.upper(typeText)
     
-    if isGold then
+    if string.find(upperText, "FORBIDDEN") or isGold then
         return COLOR_CRIMSON, "FORBIDDEN", true, nil
     end
 
@@ -255,9 +255,7 @@ local function ScanShopAndNotify()
     local mafiaUI = LOCAL_PLAYER.PlayerGui:FindFirstChild("MafiaWarsUI")
     if not mafiaUI then return end
 
-    local shopPanel = mafiaUI:FindFirstChild("Root", true) and mafiaUI.Root:FindFirstChild("Content", true) and mafiaUI.Root.Content:FindFirstChild("ShopPanel", true)
-    local cashScroller = shopPanel and shopPanel:FindFirstChild("CashScroller", true) or mafiaUI:FindFirstChild("CashScroller", true)
-    
+    local cashScroller = mafiaUI:FindFirstChild("CashScroller", true)
     if not cashScroller then return end
 
     local currentlyVisible = {}
