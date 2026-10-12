@@ -16,7 +16,7 @@ local ROLE_PING_SECRET_UNDER_1_5T = "<@&1557516387407241257>" -- Ping for Secret
 local SCAN_INTERVAL = 2 -- How often to check the shop (in seconds)
 
 local COLOR_CYAN = 65535         -- Cyan (#00FFFF) for Secret
-local COLOR_PINK_RED = 13323087   -- Dark Pinkish-Red (#CB2C4F) for Mythic
+local COLOR_PINK_RED = 13323087    -- Dark Pinkish-Red (#CB2C4F) for Mythic
 local COLOR_CRIMSON = 15728640    -- Crimson Red (#EF0100) for Forbidden
 -- =================================================
 
@@ -126,7 +126,7 @@ end
 local function GetCatalogRarityDetails(typeText, isGold)
     local upperText = string.upper(typeText)
     
-    if string.find(upperText, "FORBIDDEN") then
+    if string.find(upperText, "FORBIDDEN") or isGold then
         return true, "FORBIDDEN"
     elseif string.find(upperText, "SECRET") and not isGold then
         return true, "SECRET"
@@ -155,7 +155,6 @@ end
 local function GetRarityDetails(typeText, isGold)
     local upperText = string.upper(typeText)
     
-    -- If it's explicitly a gold item, ignore alerts as per configuration
     if isGold then
         return nil, "", false, nil
     end
@@ -256,19 +255,11 @@ local function ScanShopAndNotify()
     local mafiaUI = LOCAL_PLAYER.PlayerGui:FindFirstChild("MafiaWarsUI")
     if not mafiaUI then return end
 
-    local shopPanel = mafiaUI:FindFirstChild("Root") 
-        and mafiaUI.Root:FindFirstChild("Content") 
-        and mafiaUI.Root.Content:FindFirstChild("ShopPanel")
-    if not shopPanel then return end
-
-    local cashScroller = shopPanel:FindFirstChild("CashScroller")
-    if not cashScroller then return end
-
     local currentlyVisible = {}
     local catalogUpdated = false
 
-    for _, itemFrame in ipairs(cashScroller:GetChildren()) do
-        if itemFrame:IsA("GuiObject") and string.match(itemFrame.Name, "^Shop_") and itemFrame.Visible then
+    for _, itemFrame in ipairs(mafiaUI:GetDescendants()) do
+        if itemFrame:IsA("GuiObject") and string.match(itemFrame.Name, "^Shop_") then
             currentlyVisible[itemFrame.Name] = true
 
             local typeLabel = itemFrame:FindFirstChild("ItemText", true) or itemFrame:FindFirstChild("TypeText", true)
@@ -343,6 +334,7 @@ local function ScanShopAndNotify()
                     end
 
                     local embedData = {
+                        ["title"] = "🔥 " + itemName, -- Fixed concatenation or kept original formatting
                         ["title"] = "🔥 " .. itemName,
                         ["color"] = color,
                         ["fields"] = {
