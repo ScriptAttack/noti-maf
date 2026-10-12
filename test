@@ -140,34 +140,6 @@ local function IsGoldItem(itemFrame, rawPriceText)
     return false
 end
 
-local function GetCatalogRarityDetails(typeText, isGold)
-    local upperText = string.upper(typeText)
-    
-    if string.find(upperText, "FORBIDDEN") or isGold then
-        return true, "FORBIDDEN"
-    elseif string.find(upperText, "SECRET") and not isGold then
-        return true, "SECRET"
-    end
-    
-    return false, ""
-end
-
-local function GetRarityDetails(typeText, isGold)
-    local upperText = string.upper(typeText)
-    
-    if string.find(upperText, "FORBIDDEN") or isGold then
-        return COLOR_CRIMSON, "FORBIDDEN", true, nil
-    end
-
-    if string.find(upperText, "SECRET") then
-        return COLOR_CYAN, "SECRET", true, ROLE_PING_SECRET        
-    elseif string.find(upperText, "MYTHIC") then
-        return COLOR_PINK_RED, "MYTHIC", true, ROLE_PING_MYTHIC    
-    end
-
-    return nil, "", false, nil
-end
-
 local function UpdateCatalogMessage()
     local descriptionLines = { "```ansi" }
     local forbiddenItems = {}
@@ -265,38 +237,62 @@ local function ScanShopAndNotify()
         if itemFrame:IsA("GuiObject") and string.match(itemFrame.Name, "^Shop_") then
             currentlyVisible[itemFrame.Name] = true
 
-            local typeLabel = itemFrame:FindFirstChild("ItemText", true) or itemFrame:FindFirstChild("TypeText", true)
-            local rawTypeText = typeLabel and typeLabel.Text or ""
-            local cleanedType = CleanText(rawTypeText)
+            local fullTextBlob = ""
+            for _, desc in ipairs(itemFrame:GetDescendants()) do
+                if desc:IsA("TextLabel") or desc:IsA("TextButton") then
+                    if desc.Text and desc.Text ~= "" then
+                        fullTextBlob = fullTextBlob .. " " .. desc.Text
+                    end
+                end
+            end
+            local upperBlob = string.upper(fullTextBlob)
+
+            local rarityName = ""
+            local color = nil
+            local isTargetRarity = false
+            local rolePing = nil
+
+            if string.find(upperBlob, "FORBIDDEN") or string.find(upperBlob, "BAR") then
+                rarityName = "FORBIDDEN"
+                color = COLOR_CRIMSON
+                isTargetRarity = true
+            elseif string.find(upperBlob, "SECRET") then
+                rarityName = "SECRET"
+                color = COLOR_CYAN
+                isTargetRarity = true
+                rolePing = ROLE_PING_SECRET
+            elseif string.find(upperBlob, "MYTHIC") then
+                rarityName = "MYTHIC"
+                color = COLOR_PINK_RED
+                isTargetRarity = true
+                rolePing = ROLE_PING_MYTHIC
+            end
 
             local priceLabel = itemFrame:FindFirstChild("PriceText", true)
-            local rawPriceText = priceLabel and priceLabel.Text or ""
+            local rawPriceText = priceLabel and priceLabel.Text or "0"
             local priceText = GetEffectivePrice(rawPriceText)
-
             local isGold = IsGoldItem(itemFrame, rawPriceText)
+
             local nameLabel = itemFrame:FindFirstChild("ItemName", true)
             local itemName = nameLabel and CleanText(nameLabel.Text) or itemFrame.Name
 
-            local catalogPriceStr = priceText
-            if isGold then
-                local cleanDigits = string.gsub(priceText, "[^%d%.]", "")
-                if cleanDigits ~= "" then
-                    catalogPriceStr = cleanDigits
-                end
-            end
-
             -- CATALOG LOGIC
-            local recordInCatalog, catType = GetCatalogRarityDetails(cleanedType, isGold)
-            if recordInCatalog then
+            if rarityName == "FORBIDDEN" or (rarityName == "SECRET" and not isGold) then
                 local numericVal = ParsePriceToNumber(rawPriceText, isGold)
                 if numericVal then
+                    local catalogPriceStr = priceText
+                    if isGold then
+                        local cleanDigits = string.gsub(priceText, "[^%d%.]", "")
+                        if cleanDigits ~= "" then catalogPriceStr = cleanDigits end
+                    end
+
                     if not catalogData[itemName] then
                         catalogData[itemName] = {
                             min = numericVal,
                             max = numericVal,
                             minStr = catalogPriceStr,
                             maxStr = catalogPriceStr,
-                            category = catType
+                            category = rarityName
                         }
                         catalogUpdated = true
                     else
@@ -315,8 +311,6 @@ local function ScanShopAndNotify()
             end
 
             -- ALERT NOTIFICATIONS
-            local color, rarityName, isTargetRarity, rolePing = GetRarityDetails(cleanedType, isGold)
-
             if isTargetRarity then
                 if not notifiedItems[itemFrame.Name] then
                     local statLabel = itemFrame:FindFirstChild("StatText", true)
@@ -343,7 +337,7 @@ local function ScanShopAndNotify()
                             { ["name"] = "✨ Rarity", ["value"] = rarityName, ["inline"] = true },
                             { ["name"] = "💰 Price", ["value"] = priceText, ["inline"] = true },
                             { ["name"] = "⚔️ Stats", ["value"] = statText, ["inline"] = false },
-                            { ["name"] = "📦 Type", ["value"] = string.upper(cleanedType), ["inline"] = false }
+                            { ["name"] = "📦 Type", ["value"] = rarityName, ["inline"] = false }
                         },
                         ["footer"] = { ["text"] = ITEM_BOT_NAME },
                         ["timestamp"] = DateTime.now():ToIsoDate()
