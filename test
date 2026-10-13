@@ -46,10 +46,30 @@ local function CleanText(rawText)
     return string.match(clean, "^%s*(.-)%s*$") or ""
 end
 
+-- Extracts only the final price to pay (if there's a discount showing old and new price side-by-side)
+local function GetActivePrice(rawPriceText)
+    local cleaned = CleanText(rawPriceText)
+    if cleaned == "" then return "N/A" end
+    
+    -- Find all price chunks matching currency patterns (e.g. $610M, $2.21T, etc.)
+    local prices = {}
+    for match in string.gmatch(cleaned, "%$?[%d%.]+[TBKM%a]*") do
+        table.insert(prices, match)
+    end
+    
+    if #prices > 0 then
+        -- Return the last item in the list, which is the active/discounted price on the right side
+        return prices[#prices]
+    end
+    
+    return cleaned
+end
+
 -- Converts formatted currency strings (e.g. "$1.2T", "800B", "1.5 Trillion") to raw numbers
 local function ParsePriceToNumber(rawPriceText)
-    if not rawPriceText or rawPriceText == "" then return nil end
-    local upperText = string.upper(rawPriceText)
+    local activePriceText = GetActivePrice(rawPriceText)
+    if not activePriceText or activePriceText == "" then return nil end
+    local upperText = string.upper(activePriceText)
     
     local numString = string.match(upperText, "[%d%.]+")
     if not numString then return nil end
@@ -146,10 +166,9 @@ local function ScanShopAndNotify()
                         local statLabel = itemFrame:FindFirstChild("StatText", true)
                         local nameLabel = itemFrame:FindFirstChild("ItemName", true)
 
-                        local priceText = CleanText(rawPriceText)
-                        if priceText == "" then priceText = "N/A" end
+                        local priceText = GetActivePrice(rawPriceText)
 
-                        local numericPrice = ParsePriceToNumber(priceText)
+                        local numericPrice = ParsePriceToNumber(rawPriceText)
                         if rarityName == "SECRET" and numericPrice and numericPrice < 1.5e12 then
                             rolePing = ROLE_PING_SECRET .. " " .. ROLE_PING_SECRET_UNDER_1_5T
                         end
