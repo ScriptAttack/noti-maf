@@ -2,10 +2,11 @@ local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
 
 -- ================= CONFIGURATION =================
-local BOT_NAME = "Dusk - Shop Alerts"           -- Change your webhook bot name here
-local BOT_AVATAR = "https://media.discordapp.net/attachments/1258229253325983906/1554215693329891339/dusk.png?ex=6ace88a9&is=6acd3729&hm=88759ad556e261fc90d2f6a12500c0553f6c3428f663ffeb4f2a8c0caf2a6203&=&format=webp&quality=lossless" -- Change your webhook bot avatar URL here (leave "" for default)
-
 local WEBHOOK_URL = "https://discord.com/api/webhooks/1549560381993779281/LlWPSWdoMdrpvbdFr6ry0pXSORodrTIZswPLazcArdYa4te70dExlkdlYeM4gjsPYyJe"
+
+-- Custom Bot Name & Profile Picture (Avatar)
+local BOT_NAME = "Dusk - Shop Alerts"
+local BOT_AVATAR_URL = "https://media.discordapp.net/attachments/1258229253325983906/1554215693329891339/dusk.png?ex=6ace88a9&is=6acd3729&hm=88759ad556e261fc90d2f6a12500c0553f6c3428f663ffeb4f2a8c0caf2a6203&=&format=webp&quality=lossless" -- Put image URL here, or leave empty for default webhook avatar
 
 -- Role Pings per Rarity
 local ROLE_PING_MYTHIC = "<@&1555969138285875220>"
@@ -45,7 +46,7 @@ local function CleanText(rawText)
     return string.match(clean, "^%s*(.-)%s*$") or ""
 end
 
--- Converts formatted currency strings to raw numbers
+-- Converts formatted currency strings (e.g. "$1.2T", "800B", "1.5 Trillion") to raw numbers
 local function ParsePriceToNumber(rawPriceText)
     if not rawPriceText or rawPriceText == "" then return nil end
     local upperText = string.upper(rawPriceText)
@@ -114,23 +115,18 @@ local function ScanShopAndNotify()
     local mafiaUI = LOCAL_PLAYER.PlayerGui:FindFirstChild("MafiaWarsUI")
     if not mafiaUI then return end
 
-    -- Updated path lookup to find CashScroller even if ShopPanel isn't actively open on screen
-    local root = mafiaUI:FindFirstChild("Root")
-    local content = root and root:FindFirstChild("Content")
-    local shopPanel = content and content:FindFirstChild("ShopPanel")
-    local cashScroller = shopPanel and shopPanel:FindFirstChild("CashScroller")
-    
-    if not cashScroller then
-        -- Fallback search across descendants if standard hierarchy is unloaded/hidden
-        cashScroller = mafiaUI:FindFirstChild("CashScroller", true)
-    end
-    
+    local shopPanel = mafiaUI:FindFirstChild("Root") 
+        and mafiaUI.Root:FindFirstChild("Content") 
+        and mafiaUI.Root.Content:FindFirstChild("ShopPanel")
+    if not shopPanel then return end
+
+    local cashScroller = shopPanel:FindFirstChild("CashScroller")
     if not cashScroller then return end
 
     local currentlyVisible = {}
 
     for _, itemFrame in ipairs(cashScroller:GetChildren()) do
-        if itemFrame:IsA("GuiObject") and string.match(itemFrame.Name, "^Shop_") then
+        if itemFrame:IsA("GuiObject") and string.match(itemFrame.Name, "^Shop_") and itemFrame.Visible then
             currentlyVisible[itemFrame.Name] = true
 
             local typeLabel = itemFrame:FindFirstChild("ItemText", true) or itemFrame:FindFirstChild("TypeText", true)
@@ -161,6 +157,7 @@ local function ScanShopAndNotify()
                         local statText = statLabel and CleanText(statLabel.Text) or "None"
                         local itemName = nameLabel and CleanText(nameLabel.Text) or itemFrame.Name
 
+                        -- Check if there's a custom image override for this specific item name, otherwise fetch default
                         local imageUrl = CUSTOM_IMAGE_URLS[itemName]
                         if not imageUrl then
                             local iconPlate = itemFrame:FindFirstChild("IconPlate", true)
@@ -191,8 +188,9 @@ local function ScanShopAndNotify()
                             ["embeds"] = { embedData }
                         }
 
-                        if BOT_AVATAR and BOT_AVATAR ~= "" then
-                            payloadData["avatar_url"] = BOT_AVATAR
+                        -- Attach custom avatar URL if defined
+                        if BOT_AVATAR_URL and BOT_AVATAR_URL ~= "" then
+                            payloadData["avatar_url"] = BOT_AVATAR_URL
                         end
 
                         if rolePing and rolePing ~= "" then
@@ -225,7 +223,7 @@ end
 
 -- Continuous background thread
 task.spawn(function()
-    print("[" .. BOT_NAME .. "]")
+    print("[" .. BOT_NAME .. "] Active! Watching CashScroller...")
     while true do
         pcall(ScanShopAndNotify)
         task.wait(SCAN_INTERVAL)
